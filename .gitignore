@@ -1,0 +1,26 @@
+# Secrets et variables d'environnement
+.env
+.env.*
+*.key
+*.pem
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Éditeurs / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Node (si scripts utilitaires)
+node_modules/
+
+# Logs
+*.log
+
+# Claude Code
+.claude/
