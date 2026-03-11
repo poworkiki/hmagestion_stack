@@ -22,5 +22,8 @@ node_modules/
 # Logs
 *.log
 
+# Backups
+backups/
+
 # Claude Code
 .claude/

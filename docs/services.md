@@ -26,11 +26,13 @@
 
 ---
 
-## 🌐 Services Applicatifs
+## 🌐 Services Applicatifs (Projet Coolify : `hma-apps`)
 
-| Nom | Description | URL | Environnement | Statut | Dépôt GitHub | Tech |
-|---|---|---|---|---|---|---|
-| *(à compléter)* | — | — | Production | — | — | — |
+| Nom | Description | URL | Statut | Tech |
+|---|---|---|---|---|
+| Odoo 18 | ERP / CRM open-source | [odoo.hma.business](https://odoo.hma.business) | ✅ Actif | Python / Docker |
+| Apache Superset | BI / Data Visualization | [superset.hma.business](https://superset.hma.business) | ✅ Actif | Python / Docker |
+| n8n | Workflow Automation | [n8n.hma.business](https://n8n.hma.business) | ✅ Actif | Node.js / Docker |
 
 ---
 
@@ -38,7 +40,9 @@
 
 | Nom | Type | Service lié | Instance Coolify | Statut | Sauvegarde | Notes |
 |---|---|---|---|---|---|---|
-| *(à compléter)* | PostgreSQL | — | — | — | — | — |
+| odoo-db | PostgreSQL 16 | Odoo ERP | hma-apps | ✅ Actif | — | Base dédiée Odoo |
+| superset-db | PostgreSQL 16 | Apache Superset | hma-apps | ✅ Actif | — | Base dédiée Superset |
+| n8n-db | PostgreSQL 16 | n8n | hma-apps | ✅ Actif | — | Base dédiée n8n |
 
 ---
 
@@ -47,6 +51,17 @@
 | Nom | Modèle / API | Usage | Environnement | Statut | Notes |
 |---|---|---|---|---|---|
 | *(à compléter)* | API Anthropic | — | Production | — | — |
+
+---
+
+## 📂 Organisation des Projets Coolify
+
+| Projet Coolify | Rôle | Services |
+|---|---|---|
+| `hma-monitoring` | Outils internes / infra | Uptime Kuma, Vaultwarden |
+| `hma-apps` | Services métier | Odoo 18 + PostgreSQL, Apache Superset + PostgreSQL + Redis, n8n + PostgreSQL |
+
+> **Convention** : tout nouveau service métier est déployé dans le projet `hma-apps`.
 
 ---
 
@@ -70,6 +85,11 @@ Copier-coller ce bloc dans la section appropriée lors de l'ajout d'un nouveau s
 | 2026-03 | VPS Hostinger | Hardening sécurité | UFW, fail2ban, SSH clé uniquement, sysctl durci |
 | 2026-03 | Uptime Kuma | Déployé via Coolify | `status.hma.business` opérationnel |
 | 2026-03 | Vaultwarden | Déployé via Coolify | `vault.hma.business` opérationnel, inscriptions désactivées |
+| 2026-03 | Odoo 18 | Déployé via Coolify | `odoo.hma.business` opérationnel — ERP/CRM |
+| 2026-03 | Apache Superset | Déployé via Coolify | `superset.hma.business` opérationnel — BI |
+| 2026-03 | n8n | Déployé via Coolify | `n8n.hma.business` opérationnel — Workflow Automation |
+| 2026-03 | OpenProject | Échec déploiement | Conteneur crash — RAM VPS insuffisante (min 4GB requis) |
+| 2026-03 | Projets Coolify | Réorganisation | Projet `hma-apps` créé, `hma-openproject` supprimé |
 
 ---
 
