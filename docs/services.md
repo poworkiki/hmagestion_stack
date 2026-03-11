@@ -21,7 +21,8 @@
 
 | Nom | Rôle | URL | Instance Coolify | Statut | Dépôt GitHub | Notes |
 |---|---|---|---|---|---|---|
-| *(à compléter)* | — | — | — | — | — | — |
+| Uptime Kuma | Monitoring / Status page | [status.hma.business](https://status.hma.business) | hma-uptime-kuma | ✅ Actif | — | Surveillance des services |
+| Vaultwarden | Gestionnaire de mots de passe | [vault.hma.business](https://vault.hma.business) | hma-vaultwarden | ✅ Actif | — | Compatible clients Bitwarden |
 
 ---
 
@@ -66,6 +67,9 @@ Copier-coller ce bloc dans la section appropriée lors de l'ajout d'un nouveau s
 | 2026-03 | — | Initialisation du dépôt | — |
 | 2026-03 | Coolify | DNS configuré + SSL actif | `coolify.hma.business` opérationnel |
 | 2026-03 | DNS `hma.business` | Zone DNS Hostinger configurée | `A @`, `A www`, `A coolify`, `A *` pointent vers le VPS |
+| 2026-03 | VPS Hostinger | Hardening sécurité | UFW, fail2ban, SSH clé uniquement, sysctl durci |
+| 2026-03 | Uptime Kuma | Déployé via Coolify | `status.hma.business` opérationnel |
+| 2026-03 | Vaultwarden | Déployé via Coolify | `vault.hma.business` opérationnel, inscriptions désactivées |
 
 ---
 

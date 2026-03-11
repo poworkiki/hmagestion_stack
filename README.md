@@ -52,6 +52,8 @@ Voir le fichier détaillé → **[docs/services.md](docs/services.md)**
 |---|---|---|---|
 | Coolify | Infrastructure / PaaS | [coolify.hma.business](https://coolify.hma.business) | ✅ Actif |
 | Traefik | Reverse Proxy / SSL | — | ✅ Actif |
+| Uptime Kuma | Monitoring | [status.hma.business](https://status.hma.business) | ✅ Actif |
+| Vaultwarden | Mots de passe | [vault.hma.business](https://vault.hma.business) | ✅ Actif |
 
 ---
 
@@ -92,4 +94,4 @@ Le suivi des évolutions est géré via les **[GitHub Issues](../../issues)** av
 
 ---
 
-*Maintenu par l'équipe HMA — Dernière mise à jour : Mars 2026 · Coolify ✅ en ligne*
+*Maintenu par l'équipe HMA — Dernière mise à jour : 11 Mars 2026 · Coolify ✅ · Uptime Kuma ✅ · Vaultwarden ✅*
