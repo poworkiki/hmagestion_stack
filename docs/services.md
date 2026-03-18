@@ -33,6 +33,8 @@
 | Odoo 18 | ERP / CRM open-source | [odoo.hma.business](https://odoo.hma.business) | ✅ Actif | Python / Docker |
 | Apache Superset | BI / Data Visualization | [superset.hma.business](https://superset.hma.business) | ✅ Actif | Python / Docker |
 | n8n | Workflow Automation | [n8n.hma.business](https://n8n.hma.business) | ✅ Actif | Node.js / Docker |
+| Metabase | BI / Analytics | [metabase.hma.business](http://metabase.hma.business) | ✅ Actif | Java / Docker |
+| Budibase | Low-code platform | [budibase.hma.business](http://budibase.hma.business) | 🔴 Inactif | Node.js / Docker — CouchDB + MinIO + Redis |
 
 ---
 
@@ -43,6 +45,7 @@
 | odoo-db | PostgreSQL 16 | Odoo ERP | hma-apps | ✅ Actif | — | Base dédiée Odoo |
 | superset-db | PostgreSQL 16 | Apache Superset | hma-apps | ✅ Actif | — | Base dédiée Superset |
 | n8n-db | PostgreSQL 16 | n8n | hma-apps | ✅ Actif | — | Base dédiée n8n |
+| metabase-db | PostgreSQL 16 Alpine | Metabase | metabase_hma | ✅ Actif | — | Base dédiée Metabase |
 
 ---
 
@@ -59,7 +62,7 @@
 | Projet Coolify | Rôle | Services |
 |---|---|---|
 | `hma-monitoring` | Outils internes / infra | Uptime Kuma, Vaultwarden |
-| `hma-apps` | Services métier | Odoo 18 + PostgreSQL, Apache Superset + PostgreSQL + Redis, n8n + PostgreSQL |
+| `hma-apps` | Services métier | Odoo 18 + PostgreSQL, Apache Superset + PostgreSQL + Redis, n8n + PostgreSQL, Budibase (CouchDB + MinIO + Redis), Metabase + PostgreSQL |
 
 > **Convention** : tout nouveau service métier est déployé dans le projet `hma-apps`.
 
@@ -90,6 +93,8 @@ Copier-coller ce bloc dans la section appropriée lors de l'ajout d'un nouveau s
 | 2026-03 | n8n | Déployé via Coolify | `n8n.hma.business` opérationnel — Workflow Automation |
 | 2026-03 | OpenProject | Échec déploiement | Conteneur crash — RAM VPS insuffisante (min 4GB requis) |
 | 2026-03 | Projets Coolify | Réorganisation | Projet `hma-apps` créé, `hma-openproject` supprimé |
+| 2026-03 | Metabase | Déployé via Coolify | `metabase.hma.business` opérationnel — BI / Analytics |
+| 2026-03 | Budibase | Déployé via Coolify | `budibase.hma.business` — degraded:unhealthy (CouchDB + app-service en boucle de redémarrage) |
 
 ---
 

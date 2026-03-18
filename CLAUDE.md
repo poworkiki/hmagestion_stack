@@ -4,93 +4,56 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
-## 🎯 Aperçu du projet
+## Aperçu du projet
 
 HMA est un stack d'entreprise self-hosted qui centralise la gestion métier (ERP, CRM, BI, monitoring, sécurité) sur une infrastructure VPS Hostinger pilotée par Coolify. Ce dépôt est le **point d'entrée unique** : documentation, inventaire des services, scripts d'automatisation et roadmap.
 
 ---
 
-## 🏗️ Architecture globale
+## Architecture globale
 
 ```
 Utilisateurs → HTTPS → Traefik (SSL Let's Encrypt) → Coolify → Conteneurs Docker
                                     ↓
                           VPS Hostinger (Ubuntu 24.04)
-                          IP / accès dans .env
                           Wildcard DNS *.hma.business
 ```
 
-| Couche | Technologie | Détails |
-|---|---|---|
-| Hébergement | Hostinger VPS | Ubuntu 24.04 LTS, SSH clé uniquement |
-| PaaS | Coolify v4 (self-hosted) | Orchestration Docker, déploiement automatisé |
-| Reverse Proxy / SSL | Traefik (intégré Coolify) | Certificats Let's Encrypt automatiques |
-| DNS | Hostinger Zone DNS | Wildcard `*.hma.business` → VPS |
-| BDD | PostgreSQL 16 | Instance dédiée par service |
-| Cache | Redis 7 | Pour services nécessitant du cache |
-| CI/CD | GitHub Actions | Organisation `hmagestion` |
-| Sécurité VPS | UFW, fail2ban, sysctl | `hardening.sh` |
+**Services déployés** : Coolify, Traefik, Odoo 18 (ERP/CRM), Apache Superset (BI), n8n (Workflow Automation), Uptime Kuma (monitoring), Vaultwarden (mots de passe), Metabase (BI/Analytics), Budibase (low-code platform).
 
-**Services déployés** : Coolify, Traefik, Odoo 18 (ERP/CRM), Apache Superset (BI), n8n (Workflow Automation), Uptime Kuma (monitoring), Vaultwarden (mots de passe)
+Tout nouveau service déployé via Coolify est automatiquement accessible sur `[nom].hma.business` sans modification DNS (wildcard `*` configuré).
 
-> Tout nouveau service déployé via Coolify est automatiquement accessible sur `[nom].hma.business` sans modification DNS.
+Détails techniques complets : `docs/stack.md` · Inventaire des services : `docs/services.md` · Procédures opérationnelles : `docs/runbooks.md`
 
 ---
 
-## 📂 Structure du dépôt
-
-| Fichier / Dossier | Rôle |
-|---|---|
-| `README.md` | Point d'entrée, vue d'ensemble du stack |
-| `docs/stack.md` | Architecture technique, choix infra, DNS, Docker |
-| `docs/services.md` | Inventaire des services déployés (tableaux par catégorie) |
-| `docs/runbooks.md` | Procédures opérationnelles (déploiement, incidents, backups) |
-| `scripts/vw-*.sh` | Scripts d'automatisation Vaultwarden (auth, backup, audit, ajout, healthcheck) |
-| `hardening.sh` | Script de sécurisation du VPS |
-| `.env` | Variables sensibles — **gitignored** |
-| `.specify/` | Templates et mémoire Specify (spec-driven development) |
-| `backups/` | Exports Vaultwarden horodatés — **gitignored** |
-
----
-
-## 🔧 Commandes utiles
+## Commandes utiles
 
 ### Scripts Vaultwarden (API OAuth 2.0)
 
-Tous les scripts chargent automatiquement le `.env` pour l'authentification.
+Tous les scripts chargent automatiquement le `.env` pour l'authentification. Variables requises dans `.env` : identifiants Vaultwarden, token API Coolify.
 
 ```bash
-# Health check complet (HTTP, API, OAuth, Admin)
-./scripts/vw-healthcheck.sh
-
-# Audit du coffre (liste les éléments, stats, vérifications sécurité)
-./scripts/vw-audit.sh
-
-# Backup chiffré horodaté (rotation automatique des 30 derniers)
-./scripts/vw-backup.sh [dossier_destination]
-
-# Ajouter un identifiant
-./scripts/vw-add.sh "Nom du service" "utilisateur" "mot_de_passe" "https://url"
-
-# Obtenir un token OAuth (utilisé par les autres scripts)
-source scripts/vw-auth.sh
+./scripts/vw-healthcheck.sh                              # Health check complet (HTTP, API, OAuth, Admin)
+./scripts/vw-audit.sh                                     # Audit du coffre (éléments, stats, sécurité)
+./scripts/vw-backup.sh [dossier_destination]              # Backup chiffré horodaté (rotation 30 derniers)
+./scripts/vw-add.sh "Nom" "user" "pass" "https://url"    # Ajouter un identifiant
+source scripts/vw-auth.sh                                 # Obtenir un token OAuth (utilisé par les autres scripts)
 ```
 
 ### Déploiement via API Coolify
 
 ```bash
-# Lister les services
 curl -s "https://coolify.hma.business/api/v1/services" \
   -H "Authorization: Bearer $COOLIFY_API_TOKEN"
 
-# Démarrer un service
 curl -s -X POST "https://coolify.hma.business/api/v1/services/{uuid}/start" \
   -H "Authorization: Bearer $COOLIFY_API_TOKEN"
 ```
 
 ---
 
-## 📝 Règles d'édition
+## Règles d'édition
 
 - Toujours écrire en **français**
 - Maintenir les tableaux Markdown **alignés et lisibles**
@@ -100,7 +63,7 @@ curl -s -X POST "https://coolify.hma.business/api/v1/services/{uuid}/start" \
 
 ---
 
-## 🔄 Conventions
+## Conventions
 
 ### Ajouter un service dans `docs/services.md`
 Toujours renseigner **tous les champs** du tableau. Utiliser `—` si non applicable.
@@ -124,42 +87,22 @@ Branches : main (prod) / develop (staging) / feature/* / fix/*
 
 ---
 
-## 🎨 Style visuel
+## Contraintes
 
-- Interface claire et minimaliste
-- Pas de mode sombre pour le MVP
-
----
-
-## 🔒 Contraintes et Politiques
-
-- NE JAMAIS exposer les clés API au client
 - NE JAMAIS committer de secrets — tout passe par `.env` (gitignored) et Vaultwarden
-- Préférer les composants existants plutôt que d'ajouter de nouvelles bibliothèques UI
 - Privilégier les images Docker officielles pour les services
+- Interface claire et minimaliste, pas de mode sombre pour le MVP
 
 ---
 
-## 🧪 Tests
+## Tests
 
 À la fin de chaque développement impliquant l'interface graphique :
 - Tester avec playwright-skill — l'interface doit être responsive, fonctionnelle et répondre au besoin développé
 
 ---
 
-## 📚 Documentation
-
-| Document | Description |
-|---|---|
-| [PRD.md](PRD.md) | Product Requirements Document — exigences produit |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Architecture technique détaillée |
-| [docs/stack.md](docs/stack.md) | Choix techniques et infrastructure |
-| [docs/services.md](docs/services.md) | Inventaire des services déployés |
-| [docs/runbooks.md](docs/runbooks.md) | Procédures opérationnelles |
-
----
-
-## 🔍 Context7
+## Context7
 
 Utiliser **toujours** Context7 (MCP) lorsqu'il y a besoin de :
 - Génération de code
@@ -170,14 +113,10 @@ Utiliser automatiquement les outils MCP Context7 (`resolve-library-id` puis `que
 
 ---
 
-## 🛠️ Specify (Spec-Driven Development)
+## Specify (Spec-Driven Development)
 
 Ce dépôt utilise **Specify** (spec-kit) pour le développement piloté par spécifications.
 Slash commands : `/speckit.constitution`, `/speckit.specify`, `/speckit.plan`, `/speckit.tasks`, `/speckit.implement`, `/speckit.clarify`, `/speckit.analyze`, `/speckit.checklist`.
 
----
-
-## 📝 Spécifications
-
-- Toutes les spécifications doivent être rédigées en **français**, y compris les sections Purpose et Scenarios des specs Spec-Kit
+- Toutes les spécifications doivent être rédigées en **français**, y compris les sections Purpose et Scenarios
 - Seuls les titres de Requirements doivent rester en **anglais** avec les mots-clés `SHALL` / `MUST` pour la validation Spec-Kit

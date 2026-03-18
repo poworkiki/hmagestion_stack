@@ -54,6 +54,11 @@ Voir le fichier détaillé → **[docs/services.md](docs/services.md)**
 | Traefik | Reverse Proxy / SSL | — | ✅ Actif |
 | Uptime Kuma | Monitoring | [status.hma.business](https://status.hma.business) | ✅ Actif |
 | Vaultwarden | Mots de passe | [vault.hma.business](https://vault.hma.business) | ✅ Actif |
+| Odoo 18 | ERP / CRM | [odoo.hma.business](https://odoo.hma.business) | ✅ Actif |
+| Apache Superset | BI / Data Visualization | [superset.hma.business](https://superset.hma.business) | ✅ Actif |
+| n8n | Workflow Automation | [n8n.hma.business](https://n8n.hma.business) | ✅ Actif |
+| Metabase | BI / Analytics | [metabase.hma.business](http://metabase.hma.business) | ✅ Actif |
+| Budibase | Low-code platform | [budibase.hma.business](http://budibase.hma.business) | 🔴 Inactif |
 
 ---
 
@@ -94,4 +99,4 @@ Le suivi des évolutions est géré via les **[GitHub Issues](../../issues)** av
 
 ---
 
-*Maintenu par l'équipe HMA — Dernière mise à jour : 11 Mars 2026 · Coolify ✅ · Uptime Kuma ✅ · Vaultwarden ✅*
+*Maintenu par l'équipe HMA — Dernière mise à jour : 18 Mars 2026 · Coolify ✅ · Uptime Kuma ✅ · Vaultwarden ✅ · Odoo ✅ · Superset ✅ · n8n ✅ · Metabase ✅ · Budibase 🔴*
