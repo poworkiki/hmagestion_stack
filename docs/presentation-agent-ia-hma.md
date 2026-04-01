@@ -74,55 +74,283 @@ Les 4 tokens API Pennylane sont connectés et fonctionnels :
 
 ---
 
-## Architecture technique prévue
+## Architecture technique — Système multi-agents
 
-### Flux de données
+### Vue d'ensemble
+
+Le système repose sur **5 agents spécialisés** organisés en pipeline : le Directeur de Mission route la question vers les experts, les experts produisent, le Réviseur contrôle avant que la réponse ne parte à l'utilisateur.
 
 ```
-Utilisateur (question)
+Utilisateur (chat)
        │
        ▼
-   n8n Agent IA ──────────────────────────────────────────┐
-       │                                                   │
-       ├── Question métier/théorique ?                     │
-       │   └── Qdrant (RAG)                                │
-       │       ├── kb_manuels (18k chunks DCG/DSCG)       │
-       │       ├── kb_reglementation (fiscal, social)      │
-       │       ├── kb_conventions (CC Guyane)              │
-       │       └── kb_pcg_analytique (mapping PCG)         │
-       │                                                   │
-       ├── Question sur les données d'une structure ?      │
-       │   └── Pennylane API (lecture seule)                │
-       │       ├── Trial balance                           │
-       │       ├── Écritures comptables                    │
-       │       ├── Factures                                │
-       │       └── Tiers                                   │
-       │                                                   │
-       ├── Calcul / Analyse financière ?                   │
-       │   └── Supabase (SQL)                              │
-       │       ├── fec_ecriture (FEC centralisé)           │
-       │       ├── pcg_analytique (mapping)                │
-       │       ├── budget_ligne (prévisionnel)             │
-       │       └── Vues matérialisées (SIG, Bilan, BF...) │
-       │                                                   │
-       ▼                                                   │
-   Réponse enrichie ◄─────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                     DIRECTEUR DE MISSION                         │
+│            Route, délègue, arbitre, synthétise                   │
+│     Identifie : intent + structure(s) + expert(s) requis        │
+└──────────┬──────────────┬──────────────┬────────────────────────┘
+           │              │              │
+           ▼              ▼              ▼
+┌────────────────┐ ┌────────────┐ ┌──────────────────┐
+│ EXPERT-        │ │ JURISTE    │ │ ANALYSTE         │
+│ COMPTABLE      │ │ SENIOR     │ │ FINANCIER        │
+│ SENIOR         │ │            │ │ SENIOR           │
+│                │ │ Droit      │ │                  │
+│ Chiffres       │ │ fiscal     │ │ Stratégie        │
+│ + Social       │ │ sociétés   │ │ simulations      │
+│                │ │ contrats   │ │ ratios           │
+│                │ │ travail    │ │                  │
+└───────┬────────┘ └─────┬──────┘ └────────┬─────────┘
+        │                │                  │
+        └────────────────┼──────────────────┘
+                         ▼
+              ┌─────────────────────┐
+              │  RÉVISEUR QUALITÉ   │
+              │  Vérifie, croise,   │
+              │  score confiance    │
+              └──────────┬──────────┘
+                         ▼
+              ┌─────────────────────┐
+              │ DIRECTEUR DE MISSION│  ← synthèse finale
+              └──────────┬──────────┘
+                         ▼
+                    Utilisateur
 ```
 
-### Composants
+### Les 5 agents — Profils et périmètres
+
+#### 1. Directeur de Mission (Orchestrateur)
+
+Ne produit jamais de contenu métier. Il comprend la question, identifie les structures concernées, choisit les experts, et synthétise les réponses contrôlées.
+
+| Capacité | Détail |
+|---|---|
+| Classification d'intent | Comptable / Fiscal / Financier / Mixte / Hors dossier |
+| Résolution de structure | "STIVMAT" / "toutes" / implicite (contexte session) |
+| Délégation multi-expert | Question mixte → plusieurs experts en parallèle |
+| Arbitrage | Si deux experts divergent, tranche avec le contexte |
+| Synthèse finale | Fusionne les réponses après contrôle du Réviseur |
+
+#### 2. Expert-Comptable Senior (Chiffres + Social)
+
+| Domaine | Sources | Exemples |
+|---|---|---|
+| PCG / écritures / FEC | Supabase `fec_ecriture`, Pennylane `/ledger_entries` | "Écritures du journal AC de mars" |
+| Révision des comptes | Supabase vues + Pennylane balance | "Balance fournisseurs d'ETPA au 31/12" |
+| Paie & charges sociales | Supabase comptes 64*, Qdrant `kb_conventions` | "Coût chargé conducteur travaux CC BTP N4" |
+| LODEOM social | Qdrant `kb_reglementation` | "Exonération cotisations patronales régime renforcé" |
+| Conventions collectives | Qdrant `kb_conventions` | "Grille salariale CC Commerce Guyane" |
+| Normes ANC/PCG | Qdrant `kb_manuels` | "Durée amortissement véhicule utilitaire" |
+| Consolidation groupe | Supabase multi-entité + flag intra-groupe | "Élimination flux intra-groupe HMA/STIVMAT" |
+
+#### 3. Juriste Senior (Droit pur)
+
+| Domaine | Sources | Exemples |
+|---|---|---|
+| Droit fiscal (IS, TVA, CET) | Qdrant `kb_manuels` + `kb_reglementation` | "Taux IS PME applicable pour STA" |
+| LODEOM fiscal / Girardin / ZFA | Qdrant `kb_reglementation` | "Éligibilité Girardin IS investissement productif Guyane" |
+| Droit des sociétés | Qdrant `kb_manuels` | "PV AG approbation comptes — mentions obligatoires" |
+| Droit des contrats | Qdrant `kb_manuels` | "Sous-traitance BTP : autoliquidation TVA art. 283-2 nonies" |
+| Droit du travail (contentieux) | Qdrant `kb_manuels` | "Procédure licenciement économique BTP" |
+| Structuration / transmission | Qdrant `kb_reglementation` | "Intégration fiscale HMA holding — conditions" |
+
+Répartition du social entre Expert-Comptable et Juriste :
+- **Social chiffré (quotidien)** → Expert-Comptable : paie, cotisations, coût chargé, DSN
+- **Social juridique (ponctuel)** → Juriste : licenciement, contentieux prud'homal, rupture
+
+#### 4. Analyste Financier Senior (Stratégie)
+
+| Domaine | Sources | Exemples |
+|---|---|---|
+| SIG (9 soldes + CAF) | Supabase `mv_sig` | "SIG STIVMAT 2025, postes anormaux" |
+| Ratios financiers | Supabase vues + calculs | "Liquidité et solvabilité des 4 structures" |
+| Bilan fonctionnel | Supabase `mv_bilan_fonctionnel` | "FRNG, BFR, TN d'ETPA — évolution 3 ans" |
+| Seuil de rentabilité | Supabase `mv_resultat_differentiel` | "Point mort de STA en mois" |
+| Budget vs Réalisé | Supabase `mv_budget_vs_realise` | "Écarts budget STIVMAT, alertes dépassement" |
+| Simulations | Supabase SQL + calculs | "Impact +5% charges personnel sur EBE HMA" |
+| Comparatif groupe | Supabase multi-entité | "Rentabilité comparée des 4 structures" |
+
+#### 5. Réviseur Qualité (Contrôle)
+
+Ne produit jamais de contenu métier. Intervient **après** les experts, **avant** la synthèse finale. C'est la porte de qualité du système.
+
+| Contrôle | Ce qu'il fait | Exemple |
+|---|---|---|
+| Vérification calculs | Refait le calcul indépendamment via Supabase SQL | EC dit "5 950€ chargé" → recalcule brut + charges - exo LODEOM |
+| Contrôle des sources | Vérifie que les articles/normes cités existent dans Qdrant | Juriste cite "art. 244 quater W CGI" → cross-check KB |
+| Détection contradictions | Compare les outputs de plusieurs experts | EC dit X, Juriste dit Y → alerte le Directeur |
+| Cohérence de la réponse | Vérifie que la réponse correspond à la question posée | Question sur ETPA → la réponse parle bien d'ETPA, pas de STA |
+| Score de confiance | Attribue un niveau : haute / moyenne / à vérifier | Calcul vérifié + sources OK → confiance haute |
+
+Output enrichi par le Réviseur :
+```
+"Le coût chargé est de 5 950€/mois.
+
+ 📊 Confiance : haute
+ ✅ Brut CC BTP N4 vérifié (4 200€)
+ ✅ Exo LODEOM vérifiée (barème 2025)
+ ⚠️  Le montant inclut les indemnités BTP (panier + trajet) — détail ci-dessous
+ 📎 Sources : CC BTP Guyane art. 4.2.1, Code SS art. L752-3-2"
+```
+
+### Couches de chaque agent
+
+Chaque agent est structuré en 5 couches :
+
+```
+┌─────────────────────────────────────┐
+│           ORCHESTRATEUR             │  ← logique de décision interne
+├─────────────────────────────────────┤
+│              SKILLS                 │  ← compétences métier spécifiques
+├─────────────────────────────────────┤
+│               TOOLS                 │  ← accès aux sources de données
+├─────────────────────────────────────┤
+│              MÉMOIRE                │  ← 3 niveaux (voir section Mémoire)
+├─────────────────────────────────────┤
+│               LLM                   │  ← Claude (raisonnement)
+└─────────────────────────────────────┘
+```
+
+| Agent | Orchestrateur | Skills | Tools |
+|---|---|---|---|
+| Directeur de Mission | Routage, arbitrage | Classification, synthèse, reformulation | Appel des 4 autres agents |
+| Expert-Comptable | Plan de révision | Comptabiliser, réviser, paie/charges, lettrer | Pennylane API, Supabase SQL, Qdrant KB |
+| Juriste Senior | Raisonnement juridique | Qualifier, argumenter, rédiger, citer | Qdrant KB (manuels, réglementation, conventions) |
+| Analyste Financier | Plan d'analyse | Calculer SIG/ratios, simuler, projeter | Supabase SQL (vues mat.), Pennylane API, Qdrant KB |
+| Réviseur Qualité | Pipeline de contrôle | Vérifier calculs, cross-check sources, scorer | Supabase SQL (recompute), Qdrant KB, Pennylane API |
+
+### Mémoire structurée — 3 niveaux
+
+Chaque agent dispose de trois niveaux de mémoire complémentaires :
+
+#### Mémoire long terme — sémantique (Qdrant)
+
+Ce que l'agent a appris au fil des dossiers. Les outputs passés sont indexés et retrouvés par similarité. Quand un agent traite un dossier, il retrouve automatiquement ce qu'il a produit sur des dossiers similaires — même structure, même secteur, même problématique.
+
+| Collection Qdrant | Agent | Contenu indexé |
+|---|---|---|
+| `agent_mem_expert_comptable` | Expert-Comptable | Écritures traitées, résolutions de comptes, révisions |
+| `agent_mem_juriste` | Juriste Senior | Avis rendus, montages analysés, articles cités |
+| `agent_mem_analyste` | Analyste Financier | Analyses SIG/ratios, simulations, recommandations |
+| `agent_mem_reviseur` | Réviseur Qualité | Erreurs détectées, patterns d'erreur, seuils d'alerte |
+
+Le Directeur de Mission n'a pas de collection propre — il utilise les patterns de routage stockés en mémoire procédurale.
+
+#### Mémoire court terme — session (Supabase + n8n)
+
+Ce que l'agent sait sur la mission en cours. Partagée entre les 5 agents d'une même session pour éviter de répéter les informations à chaque délégation.
+
+```sql
+CREATE TABLE agent_session (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users,
+    entite_id UUID REFERENCES entite(id),       -- NULL si hors dossier
+    exercice_id UUID REFERENCES exercice(id),    -- NULL si hors dossier
+    context JSONB DEFAULT '{}',                  -- décisions, hypothèses, données collectées
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    closed_at TIMESTAMPTZ                        -- NULL = session active
+);
+```
+
+Contenu typique du `context` JSONB :
+```json
+{
+  "entite_active": "ETPA",
+  "secteur": "BTP/Industrie",
+  "exercice": "2025",
+  "donnees_collectees": { "ca": 1850000, "ebe": 222000 },
+  "decisions": ["embauche 3 conducteurs travaux validée"],
+  "agents_sollicites": ["expert_comptable", "juriste"]
+}
+```
+
+#### Mémoire procédurale — feedback (Supabase)
+
+Ce que l'agent a appris de ses erreurs. Chaque output est scoré. Les bonnes réponses deviennent des exemples injectés dans les futurs prompts (few-shot). Les corrections manuelles deviennent des contre-exemples. L'agent s'améliore progressivement sans être réentraîné.
+
+```sql
+CREATE TABLE agent_feedback (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id UUID REFERENCES agent_session(id),
+    agent_profile TEXT NOT NULL CHECK (agent_profile IN (
+        'directeur_mission',
+        'expert_comptable',
+        'juriste',
+        'analyste_financier',
+        'reviseur'
+    )),
+    entite_id UUID REFERENCES entite(id),
+    prompt_original TEXT NOT NULL,
+    output_original TEXT NOT NULL,
+    score SMALLINT CHECK (score BETWEEN 1 AND 5),
+    correction TEXT,                             -- NULL si score >= 4
+    is_positive_example BOOLEAN GENERATED ALWAYS AS (score >= 4) STORED,
+    tags TEXT[] DEFAULT '{}',                    -- ex: {'sig', 'etpa', 'btp', 'lodeom'}
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_feedback_profile_positive
+    ON agent_feedback(agent_profile, is_positive_example)
+    WHERE is_positive_example = true;
+CREATE INDEX idx_feedback_tags ON agent_feedback USING GIN(tags);
+```
+
+### Flux de collaboration — Exemple concret
+
+```
+Utilisateur : "ETPA veut embaucher 3 conducteurs de travaux. Quel impact global ?"
+
+DIRECTEUR DE MISSION
+├── Intent : question mixte (social + fiscal + financier)
+├── Structure : ETPA (BTP/Industrie)
+├── Délègue en parallèle → 3 experts
+
+EXPERT-COMPTABLE SENIOR
+├── CC BTP N4 → brut 4 200€
+├── Charges patronales 42% → 1 764€
+├── Exo LODEOM compétitivité renforcée → -850€/mois
+├── Coût chargé : 5 114€ + indemnités BTP (panier + trajet) = 5 950€
+├── × 3 = 17 850€/mois → +214k€/an masse salariale
+└── Comptes impactés : 641, 645, 431, 437
+
+JURISTE SENIOR
+├── CDD ou CDI → période d'essai CC BTP = 2 mois
+├── Obligations : visite médicale BTP, OPPBTP, formation sécurité
+├── Fiscal : +214k€ charges déductibles → économie IS ~53 500€
+└── TVA : pas d'impact (charges de personnel hors champ)
+
+ANALYSTE FINANCIER SENIOR
+├── EBE : passe de 12% à 8.5% du CA
+├── Seuil de rentabilité : repoussé de 2 mois
+├── BFR : +50k€ (décalage paie)
+└── Recommandation : embauche phasée (2 puis 1 à M+6)
+
+RÉVISEUR QUALITÉ
+├── ✅ Brut CC BTP N4 vérifié (barème 2025)
+├── ✅ Exo LODEOM vérifiée (art. L752-3-2)
+├── ✅ Calcul IS cohérent (25% × 214k)
+├── ⚠️  EBE : recalcul donne 8.3% (écart 0.2 pts, arrondi IS)
+├── ✅ Recommandation phasage cohérente avec trésorerie
+└── 📊 Confiance globale : haute
+
+DIRECTEUR DE MISSION → synthèse finale enrichie → Utilisateur
+```
+
+### Composants techniques
 
 | Composant | Rôle | Déjà déployé |
 |---|---|---|
-| n8n | Orchestrateur agent IA + workflows sync | Oui |
-| Qdrant | Base vectorielle RAG (KB comptable) | Oui |
-| Supabase | PostgreSQL + Auth (données FEC, mapping, budget) | Oui |
+| n8n | Orchestrateur multi-agents + workflows sync | Oui |
+| Qdrant | Base vectorielle RAG (KB comptable + mémoire agents) | Oui |
+| Supabase | PostgreSQL + Auth (FEC, mapping, budget, sessions, feedback) | Oui |
 | Pennylane API | Source des données comptables (4 structures) | Oui (tokens OK) |
 | OpenAI API | Embeddings (text-embedding-3-small) + LLM | Oui (clé OK) |
 | Metabase | Dashboards visuels (SIG, Bilan, Budget vs Réalisé) | Oui |
 | Appsmith | Interface de saisie (budget, paramétrage) | Oui |
 | Vaultwarden | Stockage sécurisé des secrets | Oui |
 
-### Nouvelle collection Qdrant : kb_pcg_analytique
+### Collection Qdrant : kb_pcg_analytique
 
 Mapping des 1 412 comptes PCG avec catégories analytiques pour le RAG :
 
@@ -235,22 +463,24 @@ Niveau 1 (suffisant pour HMA) : **agrégation + élimination intra-groupe par fl
 - Paramétrage des entités et profils V/F
 - Override nature charges par entité
 
-### Agent IA (chat n8n)
-- Questions métier → RAG Qdrant
-- Questions données → API Pennylane / SQL Supabase
-- Analyse croisée → KB + données
+### Agent IA (chat n8n — système multi-agents)
+- Directeur de Mission → comprend et route la question
+- Expert-Comptable Senior → chiffres, écritures, paie, social
+- Juriste Senior → fiscal, sociétés, contrats, droit du travail
+- Analyste Financier Senior → SIG, ratios, simulations, recommandations
+- Réviseur Qualité → vérifie calculs, sources, cohérence avant réponse
 
 ---
 
 ## Livrables attendus
 
-1. **Schéma Supabase** : 6 tables + 3 auxiliaires + 7 vues matérialisées + 1 vue contrôle
+1. **Schéma Supabase** : 6 tables + 3 auxiliaires + 7 vues matérialisées + 1 vue contrôle + 2 tables mémoire agents (`agent_session`, `agent_feedback`)
 2. **Mapping PCG analytique** : 1 412 comptes catégorisés (SIG, CR, Bilan, BF, V/F)
-3. **Collection Qdrant** : `kb_pcg_analytique` avec embeddings
+3. **Collections Qdrant** : `kb_pcg_analytique` + 4 collections mémoire agents (`agent_mem_expert_comptable`, `agent_mem_juriste`, `agent_mem_analyste`, `agent_mem_reviseur`)
 4. **Workflow n8n** : sync Pennylane → Supabase (4 structures, pattern staging)
-5. **Workflow n8n** : agent IA (Qdrant RAG + Pennylane API + Supabase SQL)
+5. **Workflow n8n** : système multi-agents (5 agents : Directeur de Mission, Expert-Comptable, Juriste, Analyste Financier, Réviseur Qualité)
 6. **Dashboards Metabase** : SIG, CR, Bilan, BF, Budget vs Réalisé, Ratios
-7. **Interface Appsmith** : saisie budget + paramétrage
+7. **Interface Appsmith** : saisie budget + paramétrage + interface feedback agents (scoring 1-5)
 
 ---
 

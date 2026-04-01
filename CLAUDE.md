@@ -6,7 +6,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Aperçu du projet
 
-HMA est un stack d'entreprise self-hosted qui centralise la gestion métier (ERP, CRM, BI, monitoring, sécurité) sur une infrastructure VPS Hostinger pilotée par Coolify. Ce dépôt est le **point d'entrée unique** : documentation, inventaire des services, scripts d'automatisation et roadmap.
+HMA est un cabinet de gestion/expertise comptable basé en Guyane, gérant 4 structures (HMA, STIVMAT, STA, ETPA). Ce dépôt est le **point d'entrée unique** : documentation, inventaire des services, scripts d'automatisation et roadmap du stack self-hosted sur VPS Hostinger piloté par Coolify.
+
+---
+
+## Structure du dépôt
+
+```
+├── docs/
+│   ├── stack.md                      # Architecture globale et choix techniques
+│   ├── services.md                   # Inventaire des services déployés (source de vérité)
+│   ├── runbooks.md                   # Procédures opérationnelles (déploiement, incidents, backups)
+│   └── presentation-agent-ia-hma.md  # Présentation projet Agent IA comptable
+├── scripts/
+│   ├── vw-auth.sh                    # Auth OAuth Vaultwarden (source par les autres scripts)
+│   ├── vw-healthcheck.sh             # Health check complet Vaultwarden
+│   ├── vw-audit.sh                   # Audit du coffre Vaultwarden
+│   ├── vw-backup.sh                  # Backup chiffré horodaté (rotation 30)
+│   └── vw-add.sh                     # Ajout d'identifiant dans Vaultwarden
+├── backups/                          # Dossier gitignored pour backups locaux
+├── hardening.sh                      # Script de durcissement VPS (Fail2ban, SSH, UFW)
+├── .env                              # Variables d'environnement (gitignored)
+└── .specify/                         # Templates Spec-Kit (constitution non initialisée)
+```
 
 ---
 
@@ -19,38 +41,42 @@ Utilisateurs → HTTPS → Traefik (SSL Let's Encrypt) → Coolify → Conteneur
                           Wildcard DNS *.hma.business
 ```
 
-**Services déployés** : Coolify, Traefik, Odoo 18 (ERP/CRM), Apache Superset (BI), n8n (Workflow Automation), Uptime Kuma (monitoring), Vaultwarden (mots de passe), Metabase (BI/Analytics), Appsmith (low-code), Supabase (BaaS self-hosted), Teable (interface tableur no-code).
+**Projets Coolify** : `hma-monitoring` (Uptime Kuma, Vaultwarden) · `hma-apps` (services métier). Tout nouveau service métier va dans `hma-apps`.
 
-Tout nouveau service déployé via Coolify est automatiquement accessible sur `[nom].hma.business` sans modification DNS (wildcard `*` configuré).
+**Bases de données** : chaque service applicatif a sa propre instance PostgreSQL dédiée. Instance Supabase Cloud séparée pour ETL Pennylane (eu-west-3).
 
-**Projets Coolify** : `hma-monitoring` (Uptime Kuma, Vaultwarden) · `hma-apps` (services métier : Odoo, Superset, n8n, Metabase, Appsmith, Supabase, Teable). Tout nouveau service métier va dans `hma-apps`.
-
-**Bases de données** : chaque service applicatif a sa propre instance PostgreSQL dédiée (odoo-db, superset-db, n8n-db, metabase-db, supabase-db). Instance Supabase Cloud séparée pour ETL Pennylane (eu-west-3).
-
-**Qdrant** : base vectorielle pour le RAG — KB comptable (manuels DCG/DSCG, réglementation, conventions collectives Guyane). Accès interne uniquement (pas de FQDN public), protégé par API key.
+**Qdrant** : base vectorielle pour le RAG comptable. Accès interne uniquement (réseau Docker), protégé par API key.
 
 **Infrastructure multi-VPS** :
 - VPS principal (187.124.150.82) : Coolify HMA, tous les services métier
 - VPS secondaire (168.231.69.226) : anciens services en cours de migration
 
-**Accès SSH** : `root@187.124.150.82` (clé `id_ed25519`) · `kiki@168.231.69.226` (config dans `~/.ssh/config`)
-
-Détails techniques complets : `docs/stack.md` · Inventaire des services : `docs/services.md` · Procédures opérationnelles : `docs/runbooks.md` · Présentation projet Agent IA : `docs/presentation-agent-ia-hma.md`
+Inventaire complet des services et de leur statut : `docs/services.md`
 
 ---
 
 ## Commandes utiles
 
-### Scripts Vaultwarden (API OAuth 2.0)
+### Variables d'environnement
 
-Tous les scripts chargent automatiquement le `.env` à la racine du dépôt. Variables requises :
+Le `.env` contient des mots de passe avec caractères spéciaux (`$`, `!`, `#`). **Ne jamais utiliser `source .env`**. Extraire les variables ainsi :
 
+```bash
+VAULTWARDEN_URL=$(grep '^VAULTWARDEN_URL=' .env | cut -d= -f2-)
+COOLIFY_API_TOKEN=$(grep '^COOLIFY_API_TOKEN=' .env | cut -d= -f2-)
+```
+
+Variables requises dans `.env` :
 ```
 VAULTWARDEN_URL=https://vault.hma.business
 VAULTWARDEN_CLIENT_ID=...
 VAULTWARDEN_CLIENT_SECRET=...
 COOLIFY_API_TOKEN=...
 ```
+
+### Scripts Vaultwarden (API OAuth 2.0)
+
+Tous les scripts chargent automatiquement le `.env` à la racine.
 
 ```bash
 ./scripts/vw-healthcheck.sh                              # Health check complet (HTTP, API, OAuth, Admin)
@@ -66,7 +92,7 @@ source scripts/vw-auth.sh                                 # Obtenir un token OAu
 sudo ./hardening.sh    # Fail2ban, SSH hardening, sysctl, UFW — à exécuter sur le VPS
 ```
 
-### Déploiement via API Coolify
+### API Coolify
 
 ```bash
 curl -s "https://coolify.hma.business/api/v1/services" \
@@ -81,19 +107,17 @@ curl -s -X POST "https://coolify.hma.business/api/v1/services/{uuid}/start" \
 Tokens stockés dans Vaultwarden. Endpoint de base : `https://app.pennylane.com/api/external/v2`
 
 ```bash
-# Balance des comptes (trial balance)
 curl -s "https://app.pennylane.com/api/external/v2/trial_balance?period_start=2025-01-01&period_end=2025-12-31" \
   -H "Authorization: Bearer $PENNYLANE_TOKEN"
-
-# Écritures comptables, fournisseurs, clients, journaux, catégories
-# Voir docs/presentation-agent-ia-hma.md pour la liste complète des endpoints
 ```
 
-### Accès SSH aux VPS
+Endpoints principaux : `/trial_balance`, `/ledger_entries`, `/ledger_accounts`, `/supplier_invoices`, `/customer_invoices`, `/suppliers`, `/customers`, `/journals`, `/categories`. Détails dans `docs/presentation-agent-ia-hma.md`.
+
+### Accès SSH
 
 ```bash
-ssh root@187.124.150.82                    # VPS HMA principal
-ssh kiki@168.231.69.226                    # VPS secondaire (ancien)
+ssh root@187.124.150.82                    # VPS HMA principal (clé id_ed25519)
+ssh kiki@168.231.69.226                    # VPS secondaire (config ~/.ssh/config)
 ```
 
 ### Qdrant (KB interne)
@@ -148,7 +172,6 @@ Branches : main (prod) / develop (staging) / feature/* / fix/*
 - Privilégier les images Docker officielles pour les services
 - Interface claire et minimaliste, pas de mode sombre pour le MVP
 - Les tokens API (Pennylane, OpenAI, Qdrant) sont stockés **exclusivement dans Vaultwarden** — ne jamais les stocker en base PostgreSQL en clair
-- Le `.env` local contient des mots de passe avec caractères spéciaux — utiliser `grep + cut` pour extraire les variables, pas `source .env`
 
 ---
 
@@ -199,9 +222,26 @@ Token sandbox : `Pennylane API Sandbox` (CLAUDE_SANDBOX)
 
 Voir `docs/presentation-agent-ia-hma.md` pour la présentation complète.
 
-Architecture : Pennylane API → n8n → Supabase (FEC) + Qdrant (RAG) → Metabase (dashboards) + Agent IA (chat).
+**Architecture multi-agents** (5 agents, orchestrés par n8n) :
 
-Composants clés :
+```
+Utilisateur → Directeur de Mission → Expert(s) → Réviseur Qualité → Synthèse → Utilisateur
+```
+
+| Agent | Rôle | Sources |
+|---|---|---|
+| Directeur de Mission | Route, délègue, synthétise | Appel des 4 autres agents |
+| Expert-Comptable Senior | Chiffres + Social (paie, CC, LODEOM social) | Pennylane API, Supabase SQL, Qdrant KB |
+| Juriste Senior | Droit fiscal, sociétés, contrats, travail | Qdrant KB (manuels, réglementation) |
+| Analyste Financier Senior | SIG, ratios, simulations, recommandations | Supabase vues matérialisées, Pennylane API |
+| Réviseur Qualité | Vérifie calculs, croise sources, score confiance | Supabase SQL, Qdrant KB, Pennylane API |
+
+**Mémoire structurée** (3 niveaux par agent) :
+- **Long terme** (Qdrant) : outputs passés indexés par similarité — 4 collections `agent_mem_*`
+- **Court terme** (Supabase `agent_session`) : contexte session partagé entre agents
+- **Procédurale** (Supabase `agent_feedback`) : scoring + few-shot injection
+
+**Données** :
 - **pcg_analytique** : mapping des 1 412 comptes PCG (SIG, CR, Bilan, Bilan fonctionnel, V/F)
 - **fec_ecriture** : écritures comptables normalisées FEC (Art. A.47 A-1 LPF)
 - **kb_pcg_analytique** : collection Qdrant pour le RAG comptable
