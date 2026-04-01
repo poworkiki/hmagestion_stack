@@ -19,11 +19,23 @@ Utilisateurs → HTTPS → Traefik (SSL Let's Encrypt) → Coolify → Conteneur
                           Wildcard DNS *.hma.business
 ```
 
-**Services déployés** : Coolify, Traefik, Odoo 18 (ERP/CRM), Apache Superset (BI), n8n (Workflow Automation), Uptime Kuma (monitoring), Vaultwarden (mots de passe), Metabase (BI/Analytics), Budibase (low-code platform).
+**Services déployés** : Coolify, Traefik, Odoo 18 (ERP/CRM), Apache Superset (BI), n8n (Workflow Automation), Uptime Kuma (monitoring), Vaultwarden (mots de passe), Metabase (BI/Analytics), Appsmith (low-code), Supabase (BaaS self-hosted), Teable (interface tableur no-code).
 
 Tout nouveau service déployé via Coolify est automatiquement accessible sur `[nom].hma.business` sans modification DNS (wildcard `*` configuré).
 
-Détails techniques complets : `docs/stack.md` · Inventaire des services : `docs/services.md` · Procédures opérationnelles : `docs/runbooks.md`
+**Projets Coolify** : `hma-monitoring` (Uptime Kuma, Vaultwarden) · `hma-apps` (services métier : Odoo, Superset, n8n, Metabase, Appsmith, Supabase, Teable). Tout nouveau service métier va dans `hma-apps`.
+
+**Bases de données** : chaque service applicatif a sa propre instance PostgreSQL dédiée (odoo-db, superset-db, n8n-db, metabase-db, supabase-db). Instance Supabase Cloud séparée pour ETL Pennylane (eu-west-3).
+
+**Qdrant** : base vectorielle pour le RAG — KB comptable (manuels DCG/DSCG, réglementation, conventions collectives Guyane). Accès interne uniquement (pas de FQDN public), protégé par API key.
+
+**Infrastructure multi-VPS** :
+- VPS principal (187.124.150.82) : Coolify HMA, tous les services métier
+- VPS secondaire (168.231.69.226) : anciens services en cours de migration
+
+**Accès SSH** : `root@187.124.150.82` (clé `id_ed25519`) · `kiki@168.231.69.226` (config dans `~/.ssh/config`)
+
+Détails techniques complets : `docs/stack.md` · Inventaire des services : `docs/services.md` · Procédures opérationnelles : `docs/runbooks.md` · Présentation projet Agent IA : `docs/presentation-agent-ia-hma.md`
 
 ---
 
@@ -31,7 +43,14 @@ Détails techniques complets : `docs/stack.md` · Inventaire des services : `doc
 
 ### Scripts Vaultwarden (API OAuth 2.0)
 
-Tous les scripts chargent automatiquement le `.env` pour l'authentification. Variables requises dans `.env` : identifiants Vaultwarden, token API Coolify.
+Tous les scripts chargent automatiquement le `.env` à la racine du dépôt. Variables requises :
+
+```
+VAULTWARDEN_URL=https://vault.hma.business
+VAULTWARDEN_CLIENT_ID=...
+VAULTWARDEN_CLIENT_SECRET=...
+COOLIFY_API_TOKEN=...
+```
 
 ```bash
 ./scripts/vw-healthcheck.sh                              # Health check complet (HTTP, API, OAuth, Admin)
@@ -39,6 +58,12 @@ Tous les scripts chargent automatiquement le `.env` pour l'authentification. Var
 ./scripts/vw-backup.sh [dossier_destination]              # Backup chiffré horodaté (rotation 30 derniers)
 ./scripts/vw-add.sh "Nom" "user" "pass" "https://url"    # Ajouter un identifiant
 source scripts/vw-auth.sh                                 # Obtenir un token OAuth (utilisé par les autres scripts)
+```
+
+### Hardening VPS
+
+```bash
+sudo ./hardening.sh    # Fail2ban, SSH hardening, sysctl, UFW — à exécuter sur le VPS
 ```
 
 ### Déploiement via API Coolify
@@ -49,6 +74,36 @@ curl -s "https://coolify.hma.business/api/v1/services" \
 
 curl -s -X POST "https://coolify.hma.business/api/v1/services/{uuid}/start" \
   -H "Authorization: Bearer $COOLIFY_API_TOKEN"
+```
+
+### API Pennylane (4 structures)
+
+Tokens stockés dans Vaultwarden. Endpoint de base : `https://app.pennylane.com/api/external/v2`
+
+```bash
+# Balance des comptes (trial balance)
+curl -s "https://app.pennylane.com/api/external/v2/trial_balance?period_start=2025-01-01&period_end=2025-12-31" \
+  -H "Authorization: Bearer $PENNYLANE_TOKEN"
+
+# Écritures comptables, fournisseurs, clients, journaux, catégories
+# Voir docs/presentation-agent-ia-hma.md pour la liste complète des endpoints
+```
+
+### Accès SSH aux VPS
+
+```bash
+ssh root@187.124.150.82                    # VPS HMA principal
+ssh kiki@168.231.69.226                    # VPS secondaire (ancien)
+```
+
+### Qdrant (KB interne)
+
+Accès uniquement via réseau Docker interne (pas de port exposé).
+```bash
+# Depuis le VPS HMA :
+APIKEY=$(docker inspect qdrant-obq4zyz8jnml2csbd0r0syq4 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep QDRANT__SERVICE__API_KEY | cut -d= -f2)
+IP=$(docker inspect qdrant-obq4zyz8jnml2csbd0r0syq4 --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+curl -s -H "api-key: $APIKEY" http://$IP:6333/collections
 ```
 
 ---
@@ -92,6 +147,8 @@ Branches : main (prod) / develop (staging) / feature/* / fix/*
 - NE JAMAIS committer de secrets — tout passe par `.env` (gitignored) et Vaultwarden
 - Privilégier les images Docker officielles pour les services
 - Interface claire et minimaliste, pas de mode sombre pour le MVP
+- Les tokens API (Pennylane, OpenAI, Qdrant) sont stockés **exclusivement dans Vaultwarden** — ne jamais les stocker en base PostgreSQL en clair
+- Le `.env` local contient des mots de passe avec caractères spéciaux — utiliser `grep + cut` pour extraire les variables, pas `source .env`
 
 ---
 
@@ -120,3 +177,32 @@ Slash commands : `/speckit.constitution`, `/speckit.specify`, `/speckit.plan`, `
 
 - Toutes les spécifications doivent être rédigées en **français**, y compris les sections Purpose et Scenarios
 - Seuls les titres de Requirements doivent rester en **anglais** avec les mots-clés `SHALL` / `MUST` pour la validation Spec-Kit
+
+---
+
+## Structures Pennylane
+
+4 structures connectées via API (tokens en lecture seule dans Vaultwarden) :
+
+| Structure | Activité | Token Vaultwarden |
+|---|---|---|
+| HMA | Gestion / Holding | `Pennylane API — HMA` |
+| STIVMAT | Commerce | `Pennylane API — STIVMAT` |
+| STA | Services / BTP | `Pennylane API — STA` |
+| ETPA | Industrie / BTP | `Pennylane API — ETPA` |
+
+Token sandbox : `Pennylane API Sandbox` (CLAUDE_SANDBOX)
+
+---
+
+## Projet en cours : Agent IA comptable
+
+Voir `docs/presentation-agent-ia-hma.md` pour la présentation complète.
+
+Architecture : Pennylane API → n8n → Supabase (FEC) + Qdrant (RAG) → Metabase (dashboards) + Agent IA (chat).
+
+Composants clés :
+- **pcg_analytique** : mapping des 1 412 comptes PCG (SIG, CR, Bilan, Bilan fonctionnel, V/F)
+- **fec_ecriture** : écritures comptables normalisées FEC (Art. A.47 A-1 LPF)
+- **kb_pcg_analytique** : collection Qdrant pour le RAG comptable
+- **Vues matérialisées** : mv_balance_generale, mv_sig, mv_compte_resultat, mv_bilan, mv_bilan_fonctionnel, mv_resultat_differentiel, mv_budget_vs_realise

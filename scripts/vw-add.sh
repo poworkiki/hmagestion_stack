@@ -35,33 +35,42 @@ echo "   Nom       : ${NAME}"
 echo "   Utilisateur: ${USERNAME}"
 echo "   URI       : ${URI:-aucune}"
 
-# Construire le payload
+# Construire le payload avec Python pour échapper correctement les caractères spéciaux
 # Type 1 = Login
 if [ -n "$URI" ]; then
-  URI_JSON=$(cat <<UEOF
-    "uris": [{"uri": "${URI}", "match": null}],
-UEOF
-)
-else
-  URI_JSON=""
-fi
-
-PAYLOAD=$(cat <<EOF
-{
-  "type": 1,
-  "name": "${NAME}",
-  "login": {
-    "username": "${USERNAME}",
-    "password": "${PASSWORD}",
-    ${URI_JSON}
-    "totp": null
+  PAYLOAD=$(python3 -c "
+import json, sys
+print(json.dumps({
+  'type': 1,
+  'name': sys.argv[1],
+  'login': {
+    'username': sys.argv[2],
+    'password': sys.argv[3],
+    'uris': [{'uri': sys.argv[4], 'match': None}],
+    'totp': None
   },
-  "notes": null,
-  "favorite": false,
-  "reprompt": 0
-}
-EOF
-)
+  'notes': None,
+  'favorite': False,
+  'reprompt': 0
+}))
+" "$NAME" "$USERNAME" "$PASSWORD" "$URI")
+else
+  PAYLOAD=$(python3 -c "
+import json, sys
+print(json.dumps({
+  'type': 1,
+  'name': sys.argv[1],
+  'login': {
+    'username': sys.argv[2],
+    'password': sys.argv[3],
+    'totp': None
+  },
+  'notes': None,
+  'favorite': False,
+  'reprompt': 0
+}))
+" "$NAME" "$USERNAME" "$PASSWORD")
+fi
 
 # Créer l'élément via l'API
 RESPONSE=$(curl -s -X POST "${VAULTWARDEN_URL}/api/ciphers" \

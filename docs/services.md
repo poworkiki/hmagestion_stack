@@ -34,7 +34,11 @@
 | Apache Superset | BI / Data Visualization | [superset.hma.business](https://superset.hma.business) | ✅ Actif | Python / Docker |
 | n8n | Workflow Automation | [n8n.hma.business](https://n8n.hma.business) | ✅ Actif | Node.js / Docker |
 | Metabase | BI / Analytics | [metabase.hma.business](http://metabase.hma.business) | ✅ Actif | Java / Docker |
-| Budibase | Low-code platform | [budibase.hma.business](http://budibase.hma.business) | 🔴 Inactif | Node.js / Docker — CouchDB + MinIO + Redis |
+| Appsmith | Low-code app builder / saisie / mapping | [appsmith.hma.business](https://appsmith.hma.business) | ✅ Actif | Node.js / Docker — remplace Budibase & NocoDB |
+| Supabase | BaaS (Auth, DB, Storage, Realtime) | [supabase.hma.business](https://supabase.hma.business) | ✅ Actif | Self-hosted — PostgreSQL + Kong + Studio + Auth + Storage |
+| Teable | Interface tableur / No-code | [teable.hma.business](https://teable.hma.business) | ✅ Actif | Node.js / Docker — PostgreSQL natif |
+| ~~NocoDB~~ | ~~Interface tableur~~ | ~~nocodb.hma.business~~ | 🗑️ Supprimé | Remplacé par Appsmith |
+| ~~Budibase~~ | ~~Low-code platform~~ | ~~budibase.hma.business~~ | 🗑️ Supprimé | Désinstallé — CouchDB en crash loop |
 
 ---
 
@@ -46,6 +50,8 @@
 | superset-db | PostgreSQL 16 | Apache Superset | hma-apps | ✅ Actif | — | Base dédiée Superset |
 | n8n-db | PostgreSQL 16 | n8n | hma-apps | ✅ Actif | — | Base dédiée n8n |
 | metabase-db | PostgreSQL 16 Alpine | Metabase | metabase_hma | ✅ Actif | — | Base dédiée Metabase |
+| supabase-cloud | PostgreSQL 17 | Pennylane ETL (backup) | Supabase Cloud (eu-west-3) | ✅ Actif | Supabase auto | `db.uhuvuhyszrudzgcefolo.supabase.co` |
+| supabase-db | PostgreSQL 15 | Supabase self-hosted | hma-apps | ✅ Actif | — | Base dédiée Supabase self-hosted |
 
 ---
 
@@ -62,7 +68,7 @@
 | Projet Coolify | Rôle | Services |
 |---|---|---|
 | `hma-monitoring` | Outils internes / infra | Uptime Kuma, Vaultwarden |
-| `hma-apps` | Services métier | Odoo 18 + PostgreSQL, Apache Superset + PostgreSQL + Redis, n8n + PostgreSQL, Budibase (CouchDB + MinIO + Redis), Metabase + PostgreSQL |
+| `hma-apps` | Services métier | Odoo 18 + PostgreSQL, Apache Superset + PostgreSQL + Redis, n8n + PostgreSQL, Metabase + PostgreSQL, Appsmith |
 
 > **Convention** : tout nouveau service métier est déployé dans le projet `hma-apps`.
 
@@ -95,6 +101,11 @@ Copier-coller ce bloc dans la section appropriée lors de l'ajout d'un nouveau s
 | 2026-03 | Projets Coolify | Réorganisation | Projet `hma-apps` créé, `hma-openproject` supprimé |
 | 2026-03 | Metabase | Déployé via Coolify | `metabase.hma.business` opérationnel — BI / Analytics |
 | 2026-03 | Budibase | Déployé via Coolify | `budibase.hma.business` — degraded:unhealthy (CouchDB + app-service en boucle de redémarrage) |
+| 2026-03 | Budibase | Supprimé de Coolify | CouchDB en crash loop permanent — service non utilisé, volumes supprimés |
+| 2026-03 | NocoDB | Déployé via Coolify | `nocodb.hma.business` — remplace Budibase pour saisie/mapping |
+| 2026-04 | NocoDB | Supprimé de Coolify | Remplacé par Appsmith |
+| 2026-04 | Appsmith | Déployé via Coolify | `appsmith.hma.business` — low-code app builder, saisie, mapping |
+| 2026-04 | Supabase | Déployé via Coolify (self-hosted) | `supabase.hma.business` — BaaS complet (Auth, Storage, Realtime, Edge Functions, PostgreSQL) |
 
 ---
 
