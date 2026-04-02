@@ -57,14 +57,14 @@
 
 ### Workflow n8n (A3)
 
-- [ ] T011 [US4] Créer le workflow n8n : noeud HTTP Request paginé vers Pennylane `/ledger_entries` (gestion pagination, auth Bearer token) dans n8n/workflow-sync-pennylane.json
-- [ ] T012 [US4] Ajouter le noeud Code n8n : mapping Pennylane → colonnes FEC (selon contracts/pennylane-api.md) + calcul hash_md5 dans n8n/workflow-sync-pennylane.json
-- [ ] T013 [US4] Ajouter le noeud Supabase/PostgreSQL : INSERT batch dans `_staging_fec` dans n8n/workflow-sync-pennylane.json
-- [ ] T014 [US4] Ajouter le noeud SQL : MERGE staging → `fec_ecriture` (INSERT ... ON CONFLICT (hash_md5) DO NOTHING) + UPDATE pcg_numero via resolve_compte() dans n8n/workflow-sync-pennylane.json
-- [ ] T015 [US4] Ajouter le noeud SQL : INSERT dans `fec_import` avec stats (nb_lignes_brut, nb_lignes_inserees, duree_secondes, statut) dans n8n/workflow-sync-pennylane.json
-- [ ] T016 [US4] Paramétrer la boucle 4 structures : credentials Pennylane par entité (tokens depuis Vaultwarden), mapping entite_id + exercice_id (résolu par requête : exercice non clôturé le plus récent pour l'entité) dans n8n/workflow-sync-pennylane.json
-- [ ] T017 [US4] Ajouter le noeud SQL : appel `refresh_all_views()` après merge dans n8n/workflow-sync-pennylane.json
-- [ ] T018 [US4] Ajouter gestion d'erreurs : retry 3x avec backoff sur 429/500, alerte sur 401, log erreur dans fec_import dans n8n/workflow-sync-pennylane.json
+- [X] T011 [US4] Créer le workflow n8n : noeud HTTP Request paginé vers Pennylane `/ledger_entries` (gestion pagination, auth Bearer token) dans n8n/workflow-sync-pennylane.json
+- [X] T012 [US4] Ajouter le noeud Code n8n : mapping Pennylane → colonnes FEC (selon contracts/pennylane-api.md) + calcul hash_md5 dans n8n/workflow-sync-pennylane.json
+- [X] T013 [US4] Ajouter le noeud Supabase/PostgreSQL : INSERT batch dans `_staging_fec` dans n8n/workflow-sync-pennylane.json
+- [X] T014 [US4] Ajouter le noeud SQL : MERGE staging → `fec_ecriture` (INSERT ... ON CONFLICT (hash_md5) DO NOTHING) + UPDATE pcg_numero via resolve_compte() dans n8n/workflow-sync-pennylane.json
+- [X] T015 [US4] Ajouter le noeud SQL : INSERT dans `fec_import` avec stats (nb_lignes_brut, nb_lignes_inserees, duree_secondes, statut) dans n8n/workflow-sync-pennylane.json
+- [X] T016 [US4] Paramétrer la boucle 4 structures : credentials Pennylane par entité (tokens depuis Vaultwarden), mapping entite_id + exercice_id (résolu par requête : exercice non clôturé le plus récent pour l'entité) dans n8n/workflow-sync-pennylane.json
+- [X] T017 [US4] Ajouter le noeud SQL : appel `refresh_all_views()` après merge dans n8n/workflow-sync-pennylane.json
+- [X] T018 [US4] Ajouter gestion d'erreurs : retry 3x avec backoff sur 429/500, alerte sur 401, log erreur dans fec_import dans n8n/workflow-sync-pennylane.json
 
 **Checkpoint**: Sync Pennylane → Supabase fonctionnelle pour les 4 structures, écritures FEC normalisées, pas de doublons
 
