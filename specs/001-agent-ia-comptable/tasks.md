@@ -101,12 +101,12 @@
 
 **Purpose**: Déployer le schéma et les données sur l'instance Supabase de production
 
-- [ ] T027 Exécuter les scripts sql/01-schema/*.sql dans l'ordre numérique sur Supabase (via éditeur SQL ou psql)
-- [ ] T028 Exécuter sql/02-data/001-pcg-analytique-seed.sql pour charger les 1 412 comptes PCG
-- [ ] T029 Exécuter sql/04-functions/resolve-compte.sql et sql/04-functions/refresh-views.sql
-- [ ] T030 Exécuter sql/03-views/*.sql dans l'ordre numérique
-- [ ] T031 Insérer les exercices comptables 2024 (01/01/2024–31/12/2024) et 2025 (01/01/2025–31/12/2025) pour les 4 entités dans la table `exercice` — confirmer avec l'utilisateur si des exercices décalés existent
-- [ ] T032 Importer le workflow n8n/workflow-sync-pennylane.json dans n8n et configurer les credentials
+- [X] T027 Exécuter les scripts sql/01-schema/*.sql dans l'ordre numérique sur Supabase (via éditeur SQL ou psql)
+- [X] T028 Exécuter sql/02-data/001-pcg-analytique-seed.sql pour charger les 1 412 comptes PCG
+- [X] T029 Exécuter sql/04-functions/resolve-compte.sql et sql/04-functions/refresh-views.sql
+- [X] T030 Exécuter sql/03-views/*.sql dans l'ordre numérique
+- [X] T031 Insérer les exercices comptables 2024 (01/01/2024–31/12/2024) et 2025 (01/01/2025–31/12/2025) pour les 4 entités dans la table `exercice` — confirmer avec l'utilisateur si des exercices décalés existent
+- [X] T032 Importer le workflow n8n/workflow-sync-pennylane.json dans n8n et configurer les credentials
 
 **Checkpoint**: Schéma déployé, workflow importé, prêt pour la première sync
 
