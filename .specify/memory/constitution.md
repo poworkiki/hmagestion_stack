@@ -37,7 +37,7 @@ Le socle de données est 100% SQL (PostgreSQL/Supabase) + workflows n8n. Pas de 
 
 `scripts/generate-pcg-seed.py` est la source de vérité unique pour le mapping des 1 412 comptes PCG.
 
-- Toute vue matérialisée MUST être conforme à `docs/referentiel-formules-comptables.md`
+- Toute vue matérialisée MUST être conforme à `docs/compta_analytique.md`
 - Aucun calcul financier (SIG, CR, Bilan, ratios) ne MUST être implémenté sans vérification préalable dans ce référentiel
 - Le mapping analytique (SIG, CR, Bilan, BF, V/F) MUST être modifié uniquement via `generate-pcg-seed.py`, jamais par UPDATE SQL direct
 - Les formules du référentiel MUST citer les comptes PCG exacts utilisés

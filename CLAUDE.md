@@ -216,7 +216,7 @@ Token sandbox : `Pennylane API Sandbox` (CLAUDE_SANDBOX)
 
 ## Référentiel formules comptables
 
-`docs/referentiel-formules-comptables.md` — spécification technique exhaustive (1 575 lignes) pour l'implémentation des vues SQL :
+`docs/compta_analytique.md` — spécification technique exhaustive (1 575 lignes) pour l'implémentation des vues SQL :
 - **SIG** : 9 soldes + CAF (méthodes additive et soustractive), comptes PCG exacts, formules SQL
 - **Compte de Résultat** : produits/charges par rubrique
 - **Bilan comptable** : actif (brut-amort=net), passif
