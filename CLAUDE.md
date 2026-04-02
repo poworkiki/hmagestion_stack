@@ -10,28 +10,6 @@ HMA est un cabinet de gestion/expertise comptable basé en Guyane, gérant 4 str
 
 ---
 
-## Structure du dépôt
-
-```
-├── docs/
-│   ├── stack.md                      # Architecture globale et choix techniques
-│   ├── services.md                   # Inventaire des services déployés (source de vérité)
-│   ├── runbooks.md                   # Procédures opérationnelles (déploiement, incidents, backups)
-│   └── presentation-agent-ia-hma.md  # Présentation projet Agent IA comptable
-├── scripts/
-│   ├── vw-auth.sh                    # Auth OAuth Vaultwarden (source par les autres scripts)
-│   ├── vw-healthcheck.sh             # Health check complet Vaultwarden
-│   ├── vw-audit.sh                   # Audit du coffre Vaultwarden
-│   ├── vw-backup.sh                  # Backup chiffré horodaté (rotation 30)
-│   └── vw-add.sh                     # Ajout d'identifiant dans Vaultwarden
-├── backups/                          # Dossier gitignored pour backups locaux
-├── hardening.sh                      # Script de durcissement VPS (Fail2ban, SSH, UFW)
-├── .env                              # Variables d'environnement (gitignored)
-└── .specify/                         # Templates Spec-Kit (constitution non initialisée)
-```
-
----
-
 ## Architecture globale
 
 ```
@@ -45,7 +23,7 @@ Utilisateurs → HTTPS → Traefik (SSL Let's Encrypt) → Coolify → Conteneur
 
 **Bases de données** : chaque service applicatif a sa propre instance PostgreSQL dédiée. Instance Supabase Cloud séparée pour ETL Pennylane (eu-west-3).
 
-**Qdrant** : base vectorielle pour le RAG comptable. Accès interne uniquement (réseau Docker), protégé par API key.
+**Qdrant** : base vectorielle pour le RAG comptable. Exposé en HTTPS sur `qdrant.hma.business`. API key dans `.mcp.json` et Vaultwarden. Serveur MCP local (`mcp-qdrant-hma/server.py`) pour accès direct depuis Claude Code.
 
 **Infrastructure multi-VPS** :
 - VPS principal (187.124.150.82) : Coolify HMA, tous les services métier
@@ -113,21 +91,39 @@ curl -s "https://app.pennylane.com/api/external/v2/trial_balance?period_start=20
 
 Endpoints principaux : `/trial_balance`, `/ledger_entries`, `/ledger_accounts`, `/supplier_invoices`, `/customer_invoices`, `/suppliers`, `/customers`, `/journals`, `/categories`. Détails dans `docs/presentation-agent-ia-hma.md`.
 
-### Accès SSH
+### Qdrant (KB interne + MCP)
+
+Accès HTTPS : `qdrant.hma.business`. API key dans Vaultwarden et `.mcp.json`.
 
 ```bash
-ssh root@187.124.150.82                    # VPS HMA principal (clé id_ed25519)
-ssh kiki@168.231.69.226                    # VPS secondaire (config ~/.ssh/config)
+# Lister les collections
+curl -s -H "api-key: $QDRANT_API_KEY" https://qdrant.hma.business:443/collections
 ```
 
-### Qdrant (KB interne)
+Serveur MCP local pour Claude Code (configuré dans `.mcp.json`) :
+- `mcp-qdrant-hma/server.py` — FastMCP + OpenAI embeddings + Qdrant client
+- Expose la KB comptable (18 000+ chunks) comme outils natifs
 
-Accès uniquement via réseau Docker interne (pas de port exposé).
+### Script PCG analytique
+
 ```bash
-# Depuis le VPS HMA :
-APIKEY=$(docker inspect qdrant-obq4zyz8jnml2csbd0r0syq4 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep QDRANT__SERVICE__API_KEY | cut -d= -f2)
-IP=$(docker inspect qdrant-obq4zyz8jnml2csbd0r0syq4 --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
-curl -s -H "api-key: $APIKEY" http://$IP:6333/collections
+python3 scripts/generate-pcg-seed.py    # Génère sql/02-data/001-pcg-analytique-seed.sql
+```
+
+Source : Pennylane API `/ledger_accounts` (1 412 comptes) → mapping analytique Python (SIG, CR, Bilan, BF, V/F) → SQL seed.
+Le mapping Python dans `generate-pcg-seed.py` est la **source de vérité unique** pour la classification des comptes.
+
+### SQL Supabase
+
+Exécuter les scripts dans l'ordre numérique :
+```bash
+psql $SUPABASE_DB_URL -f sql/01-schema/001-entite.sql
+psql $SUPABASE_DB_URL -f sql/01-schema/002-exercice.sql
+# ... etc. (ordre numérique)
+psql $SUPABASE_DB_URL -f sql/02-data/001-pcg-analytique-seed.sql
+psql $SUPABASE_DB_URL -f sql/04-functions/resolve-compte.sql
+psql $SUPABASE_DB_URL -f sql/03-views/001-mv-balance-generale.sql
+# ... etc.
 ```
 
 ---
@@ -218,11 +214,37 @@ Token sandbox : `Pennylane API Sandbox` (CLAUDE_SANDBOX)
 
 ---
 
+## Référentiel formules comptables
+
+`docs/referentiel-formules-comptables.md` — spécification technique exhaustive (1 575 lignes) pour l'implémentation des vues SQL :
+- **SIG** : 9 soldes + CAF (méthodes additive et soustractive), comptes PCG exacts, formules SQL
+- **Compte de Résultat** : produits/charges par rubrique
+- **Bilan comptable** : actif (brut-amort=net), passif
+- **Bilan fonctionnel** : emplois/ressources stables, FRNG, BFR, TN
+- **Résultat différentiel** : MCV, seuil de rentabilité, point mort
+- **25+ ratios financiers** : liquidité, solvabilité, rentabilité, rotation, sectoriels
+- **Consolidation groupe** : agrégation, élimination intra-groupe
+
+**Toujours consulter ce référentiel** avant de coder ou modifier une vue matérialisée.
+
+---
+
 ## Projet en cours : Agent IA comptable
 
 Voir `docs/presentation-agent-ia-hma.md` pour la présentation complète.
+Artefacts Spec-Kit dans `specs/001-agent-ia-comptable/` (spec, plan, tasks, research, data-model, contracts).
 
-**Architecture multi-agents** (5 agents, orchestrés par n8n) :
+### Découpage en chantiers
+
+| Chantier | Périmètre | Statut |
+|---|---|---|
+| **A** | Socle données : FEC, Balance, Bilan, CR, SIG (Supabase + Qdrant `kb_pcg_analytique`) | 🚧 En cours |
+| **B** | Dashboards Metabase (consomment les vues du chantier A) | ⬜ |
+| **C** | Budget + saisie Appsmith + tables override V/F | ⬜ |
+| **D** | Système multi-agents (5 agents n8n) | ⬜ |
+| **E** | Mémoire agents (Qdrant `agent_mem_*` + feedback) | ⬜ |
+
+### Architecture multi-agents (5 agents, orchestrés par n8n)
 
 ```
 Utilisateur → Directeur de Mission → Expert(s) → Réviseur Qualité → Synthèse → Utilisateur
@@ -241,8 +263,9 @@ Utilisateur → Directeur de Mission → Expert(s) → Réviseur Qualité → Sy
 - **Court terme** (Supabase `agent_session`) : contexte session partagé entre agents
 - **Procédurale** (Supabase `agent_feedback`) : scoring + few-shot injection
 
-**Données** :
-- **pcg_analytique** : mapping des 1 412 comptes PCG (SIG, CR, Bilan, Bilan fonctionnel, V/F)
-- **fec_ecriture** : écritures comptables normalisées FEC (Art. A.47 A-1 LPF)
-- **kb_pcg_analytique** : collection Qdrant pour le RAG comptable
-- **Vues matérialisées** : mv_balance_generale, mv_sig, mv_compte_resultat, mv_bilan, mv_bilan_fonctionnel, mv_resultat_differentiel, mv_budget_vs_realise
+**Données (dual Supabase + Qdrant)** :
+- **pcg_analytique** (Supabase) : mapping des 1 412 comptes PCG (SIG, CR, Bilan, BF, V/F) — source de vérité : `scripts/generate-pcg-seed.py`
+- **kb_pcg_analytique** (Qdrant) : même mapping enrichi en texte français pour RAG — dérivé de Supabase, embeddings OpenAI `text-embedding-3-small`
+- **fec_ecriture** (Supabase) : écritures comptables normalisées FEC (Art. A.47 A-1 LPF)
+- **Vues matérialisées** (Supabase) : mv_balance_generale, mv_sig, mv_compte_resultat, mv_bilan, mv_bilan_fonctionnel, mv_resultat_differentiel, mv_budget_vs_realise
+- **KB existantes** (Qdrant) : kb_manuels (18 132 pts), kb_reglementation (11 pts), kb_conventions (6 pts)
