@@ -18,7 +18,7 @@
 
 **Purpose**: Créer l'arborescence SQL et n8n dans le dépôt
 
-- [ ] T001 Créer l'arborescence `sql/01-schema/`, `sql/02-data/`, `sql/03-views/`, `sql/04-functions/`, `n8n/` à la racine du dépôt
+- [X] T001 Créer l'arborescence `sql/01-schema/`, `sql/02-data/`, `sql/03-views/`, `sql/04-functions/`, `n8n/` à la racine du dépôt
 
 ---
 
@@ -28,13 +28,13 @@
 
 **⚠️ CRITICAL**: Aucune tâche FEC ou vue matérialisée ne peut commencer avant la fin de cette phase
 
-- [ ] T002 [P] Créer la table `entite` avec INSERT des 4 structures (HMA, STIVMAT, STA, ETPA) dans sql/01-schema/001-entite.sql
-- [ ] T003 [P] Créer la table `pcg_analytique` (structure avec colonnes numero, libelle, classe, sig_solde, sig_signe, cr_rubrique, cr_signe, bilan_poste, bilan_section, bf_categorie, nature_defaut) dans sql/01-schema/003-pcg-analytique.sql
-- [ ] T004 Créer la table `exercice` avec contrainte UNIQUE (entite_id, date_debut) dans sql/01-schema/002-exercice.sql
-- [ ] T005 Générer le seed des 1 412 comptes PCG avec mapping analytique complet (SIG, CR, Bilan, BF, V/F) dans sql/02-data/001-pcg-analytique-seed.sql — source : récupérer la liste via Pennylane `/ledger_accounts` des 4 structures, puis enrichir avec le mapping analytique depuis le PCG officiel ANC (classes, SIG, rubriques CR, postes bilan, nature V/F)
-- [ ] T006 Créer la table `compte_resolution` dans sql/01-schema/004-compte-resolution.sql
-- [ ] T007 Créer la fonction `resolve_compte()` (résolution par préfixe décroissant, fallback classe 3 caractères) dans sql/04-functions/resolve-compte.sql
-- [ ] T005b [P] Créer le script `scripts/generate-pcg-qdrant.py` : lecture pcg_analytique depuis Supabase, génération du champ `contenu` enrichi en français, embeddings OpenAI `text-embedding-3-small`, upsert dans Qdrant `kb_pcg_analytique` avec IDs uuid5 déterministes, index payload (classe, sig_solde, cr_rubrique, bf_categorie, nature_defaut, number)
+- [X] T002 [P] Créer la table `entite` avec INSERT des 4 structures (HMA, STIVMAT, STA, ETPA) dans sql/01-schema/001-entite.sql
+- [X] T003 [P] Créer la table `pcg_analytique` (structure avec colonnes numero, libelle, classe, sig_solde, sig_signe, cr_rubrique, cr_signe, bilan_poste, bilan_section, bf_categorie, nature_defaut) dans sql/01-schema/003-pcg-analytique.sql
+- [X] T004 Créer la table `exercice` avec contrainte UNIQUE (entite_id, date_debut) dans sql/01-schema/002-exercice.sql
+- [X] T005 Générer le seed des 1 412 comptes PCG avec mapping analytique complet (SIG, CR, Bilan, BF, V/F) dans sql/02-data/001-pcg-analytique-seed.sql — source : récupérer la liste via Pennylane `/ledger_accounts` des 4 structures, puis enrichir avec le mapping analytique depuis le PCG officiel ANC (classes, SIG, rubriques CR, postes bilan, nature V/F)
+- [X] T006 Créer la table `compte_resolution` dans sql/01-schema/004-compte-resolution.sql
+- [X] T007 Créer la fonction `resolve_compte()` (résolution par préfixe décroissant, fallback classe 3 caractères) dans sql/04-functions/resolve-compte.sql
+- [X] T005b [P] Créer le script `scripts/generate-pcg-qdrant.py` : lecture pcg_analytique depuis Supabase, génération du champ `contenu` enrichi en français, embeddings OpenAI `text-embedding-3-small`, upsert dans Qdrant `kb_pcg_analytique` avec IDs uuid5 déterministes, index payload (classe, sig_solde, cr_rubrique, bf_categorie, nature_defaut, number)
 - [ ] T005c Exécuter `generate-pcg-qdrant.py` pour créer la collection `kb_pcg_analytique` (1 412 points, 1 536 dimensions, distance cosine) et vérifier COUNT Supabase == COUNT Qdrant
 
 - [ ] T005d Valider la cohérence du seed PCG (`generate-pcg-seed.py`) avec le référentiel `docs/compta_analytique.md` : vérifier que chaque sig_solde, cr_rubrique, bilan_poste, bf_categorie et nature_defaut correspond aux comptes PCG listés dans les sections 1 à 6 du référentiel (Constitution III — Référentiel-Driven)
@@ -51,9 +51,9 @@
 
 ### Tables FEC (A2)
 
-- [ ] T008 [US4] Créer la table `fec_import` (traçabilité imports : entite_id, exercice_id, source, nb_lignes, statut, erreur) dans sql/01-schema/005-fec-import.sql
-- [ ] T009 [US4] Créer la table `fec_ecriture` (18 colonnes FEC + pcg_numero, hash_md5 UNIQUE, index sur entite_id/exercice_id/compte_num/ecriture_date/hash_md5) dans sql/01-schema/006-fec-ecriture.sql
-- [ ] T010 [US4] Créer la table staging `_staging_fec` (même structure que fec_ecriture, sans contraintes, TRUNCATE à chaque run) dans sql/01-schema/006-fec-ecriture.sql
+- [X] T008 [US4] Créer la table `fec_import` (traçabilité imports : entite_id, exercice_id, source, nb_lignes, statut, erreur) dans sql/01-schema/005-fec-import.sql
+- [X] T009 [US4] Créer la table `fec_ecriture` (18 colonnes FEC + pcg_numero, hash_md5 UNIQUE, index sur entite_id/exercice_id/compte_num/ecriture_date/hash_md5) dans sql/01-schema/006-fec-ecriture.sql
+- [X] T010 [US4] Créer la table staging `_staging_fec` (même structure que fec_ecriture, sans contraintes, TRUNCATE à chaque run) dans sql/01-schema/006-fec-ecriture.sql
 
 ### Workflow n8n (A3)
 
@@ -78,20 +78,20 @@
 
 ### Fonction utilitaire
 
-- [ ] T019 [US1] Créer la fonction `refresh_all_views()` qui rafraîchit les vues dans le bon ordre (balance → bilan+CR+SIG → BF+résultat diff) dans sql/04-functions/refresh-views.sql
+- [X] T019 [US1] Créer la fonction `refresh_all_views()` qui rafraîchit les vues dans le bon ordre (balance → bilan+CR+SIG → BF+résultat diff) dans sql/04-functions/refresh-views.sql
 
 ### Vues matérialisées (A4)
 
-- [ ] T020 [US1] Créer `mv_balance_generale` : soldes par compte (pcg_numero), entité, exercice et mois, avec exclusion des à-nouveaux pour classes 6-7, index UNIQUE pour REFRESH CONCURRENTLY dans sql/03-views/001-mv-balance-generale.sql
-- [ ] T021 [P] [US1] Créer `mv_bilan` : Actif/Passif structurés (brut, amortissements 28x/29x/39x, net) par bilan_section et bilan_poste, classes 1-5, incluant à-nouveaux dans sql/03-views/002-mv-bilan.sql
-- [ ] T022 [P] [US1] Créer `mv_compte_resultat` : produits et charges par cr_rubrique avec cr_signe, classes 6-7, hors à-nouveaux dans sql/03-views/004-mv-compte-resultat.sql
-- [ ] T023 [P] [US1] Créer `mv_sig` : 9 soldes intermédiaires (Marge commerciale, Production, VA, EBE, Résultat exploitation, RCAI, Résultat exceptionnel, Résultat exercice) + CAF, en utilisant sig_solde et sig_signe de pcg_analytique dans sql/03-views/006-mv-sig.sql
-- [ ] T024 [US1] Créer `mv_bilan_fonctionnel` : emplois stables, ressources stables (avec amort en ressources), BFR exploitation, BFR hors exploitation, FRNG, TN, en valeurs brutes, utilisant bf_categorie dans sql/03-views/003-mv-bilan-fonctionnel.sql
-- [ ] T025 [US1] Créer `mv_resultat_differentiel` : charges V/F (via nature_defaut), CA, MCV, taux MCV, seuil de rentabilité, point mort en jours dans sql/03-views/005-mv-resultat-differentiel.sql
+- [X] T020 [US1] Créer `mv_balance_generale` : soldes par compte (pcg_numero), entité, exercice et mois, avec exclusion des à-nouveaux pour classes 6-7, index UNIQUE pour REFRESH CONCURRENTLY dans sql/03-views/001-mv-balance-generale.sql
+- [X] T021 [P] [US1] Créer `mv_bilan` : Actif/Passif structurés (brut, amortissements 28x/29x/39x, net) par bilan_section et bilan_poste, classes 1-5, incluant à-nouveaux dans sql/03-views/002-mv-bilan.sql
+- [X] T022 [P] [US1] Créer `mv_compte_resultat` : produits et charges par cr_rubrique avec cr_signe, classes 6-7, hors à-nouveaux dans sql/03-views/004-mv-compte-resultat.sql
+- [X] T023 [P] [US1] Créer `mv_sig` : 9 soldes intermédiaires (Marge commerciale, Production, VA, EBE, Résultat exploitation, RCAI, Résultat exceptionnel, Résultat exercice) + CAF, en utilisant sig_solde et sig_signe de pcg_analytique dans sql/03-views/006-mv-sig.sql
+- [X] T024 [US1] Créer `mv_bilan_fonctionnel` : emplois stables, ressources stables (avec amort en ressources), BFR exploitation, BFR hors exploitation, FRNG, TN, en valeurs brutes, utilisant bf_categorie dans sql/03-views/003-mv-bilan-fonctionnel.sql
+- [X] T025 [US1] Créer `mv_resultat_differentiel` : charges V/F (via nature_defaut), CA, MCV, taux MCV, seuil de rentabilité, point mort en jours dans sql/03-views/005-mv-resultat-differentiel.sql
 
 ### Vue de contrôle
 
-- [ ] T026 [US1] Créer `v_controles_coherence` (vue simple) : équilibre D=C par écriture, clôture N-1 = ouverture N, doublons hash, comptes non résolus (pcg_numero IS NULL) dans sql/03-views/007-v-controles-coherence.sql
+- [X] T026 [US1] Créer `v_controles_coherence` (vue simple) : équilibre D=C par écriture, clôture N-1 = ouverture N, doublons hash, comptes non résolus (pcg_numero IS NULL) dans sql/03-views/007-v-controles-coherence.sql
 
 **Checkpoint**: 6 vues matérialisées + 1 vue contrôle opérationnelles, états financiers calculés pour les 4 structures
 
