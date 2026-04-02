@@ -2,7 +2,7 @@
 
 ## Contexte
 
-HMA est un cabinet de gestion/expertise comptable basé en Guyane qui gère 4 structures : **HMA, STIVMAT, STA, ETPA** (commerce, BTP, services, industrie).
+HMA est un cabinet de gestion/expertise comptable basé en Guyane qui gère 4 structures : **HMA, STIVMAT, STA, ETPA**.
 
 Le stack technique est entièrement self-hosted sur un VPS Hostinger piloté par Coolify :
 - **Pennylane** : logiciel comptable (API connectée aux 4 structures)
@@ -27,7 +27,7 @@ Le KB Qdrant contient déjà :
 |---|---|---|
 | kb_manuels | Manuels DCG/DSCG (droit, fiscal, social, compta, finance) | 18 132 |
 | kb_reglementation | Textes de loi — Girardin, LODEOM, dispositifs ultramarins | 11 |
-| kb_conventions | Conventions collectives Guyane (Commerce, BTP) | 6 |
+| kb_conventions | Conventions collectives Guyane (Transport, Agroalimentaire) | 6 |
 | kb_modeles | Modèles de documents (à alimenter) | 0 |
 | kb_jurisprudence | Jurisprudence (à alimenter) | 0 |
 | kb_precedents_cabinet | Dossiers internes (à alimenter) | 0 |
@@ -35,7 +35,7 @@ Le KB Qdrant contient déjà :
 **Exemples de questions :**
 - "Quelles sont les conditions d'éligibilité au Girardin IS pour un investissement productif en Guyane ?"
 - "Quel est le plafond d'exonération LODEOM régime renforcé pour 2025 ?"
-- "Quelles sont les indemnités de déplacement prévues par la CC BTP Guyane ?"
+- "Quelles sont les indemnités de déplacement prévues par la CC Transport Guyane ?"
 - "Comment comptabiliser une subvention d'investissement selon le PCG ?"
 
 ### 2. Interroger les données comptables des 4 structures (API Pennylane)
@@ -44,10 +44,10 @@ Les 4 tokens API Pennylane sont connectés et fonctionnels :
 
 | Structure | Activité | API |
 |---|---|---|
-| HMA | Gestion / Holding | Lecture seule |
-| STIVMAT | Commerce | Lecture seule |
-| STA | Services / BTP | Lecture seule |
-| ETPA | Industrie / BTP | Lecture seule |
+| HMA | Holding | Lecture seule |
+| STIVMAT | Transport de personnes | Lecture seule |
+| STA | Transport de personnes | Lecture seule |
+| ETPA | Transformation de produits agricoles | Lecture seule |
 
 **Endpoints disponibles :**
 - `/trial_balance` : balance des comptes par période
@@ -67,7 +67,7 @@ Les 4 tokens API Pennylane sont connectés et fonctionnels :
 ### 3. Analyser et croiser (KB + données)
 
 **Exemples de questions avancées :**
-- "ETPA a un taux de sous-traitance de 35%. Est-ce cohérent avec la CC BTP Guyane ?"
+- "ETPA a un taux de matières premières de 45%. Est-ce cohérent pour une entreprise de transformation agricole ?"
 - "Calcule les SIG de STIVMAT pour l'exercice 2025 et identifie les postes anormaux"
 - "Quel dispositif fiscal LODEOM est applicable pour l'investissement matériel qu'ETPA prévoit ?"
 - "Simule l'impact sur l'EBE de HMA si les charges de personnel augmentent de 5%"
@@ -137,9 +137,9 @@ Ne produit jamais de contenu métier. Il comprend la question, identifie les str
 |---|---|---|
 | PCG / écritures / FEC | Supabase `fec_ecriture`, Pennylane `/ledger_entries` | "Écritures du journal AC de mars" |
 | Révision des comptes | Supabase vues + Pennylane balance | "Balance fournisseurs d'ETPA au 31/12" |
-| Paie & charges sociales | Supabase comptes 64*, Qdrant `kb_conventions` | "Coût chargé conducteur travaux CC BTP N4" |
+| Paie & charges sociales | Supabase comptes 64*, Qdrant `kb_conventions` | "Coût chargé chauffeur CC Transport" |
 | LODEOM social | Qdrant `kb_reglementation` | "Exonération cotisations patronales régime renforcé" |
-| Conventions collectives | Qdrant `kb_conventions` | "Grille salariale CC Commerce Guyane" |
+| Conventions collectives | Qdrant `kb_conventions` | "Grille salariale CC Transport Guyane" |
 | Normes ANC/PCG | Qdrant `kb_manuels` | "Durée amortissement véhicule utilitaire" |
 | Consolidation groupe | Supabase multi-entité + flag intra-groupe | "Élimination flux intra-groupe HMA/STIVMAT" |
 
@@ -150,8 +150,8 @@ Ne produit jamais de contenu métier. Il comprend la question, identifie les str
 | Droit fiscal (IS, TVA, CET) | Qdrant `kb_manuels` + `kb_reglementation` | "Taux IS PME applicable pour STA" |
 | LODEOM fiscal / Girardin / ZFA | Qdrant `kb_reglementation` | "Éligibilité Girardin IS investissement productif Guyane" |
 | Droit des sociétés | Qdrant `kb_manuels` | "PV AG approbation comptes — mentions obligatoires" |
-| Droit des contrats | Qdrant `kb_manuels` | "Sous-traitance BTP : autoliquidation TVA art. 283-2 nonies" |
-| Droit du travail (contentieux) | Qdrant `kb_manuels` | "Procédure licenciement économique BTP" |
+| Droit des contrats | Qdrant `kb_manuels` | "Contrat d'affrètement transport : obligations réglementaires" |
+| Droit du travail (contentieux) | Qdrant `kb_manuels` | "Procédure licenciement économique transport de personnes" |
 | Structuration / transmission | Qdrant `kb_reglementation` | "Intégration fiscale HMA holding — conditions" |
 
 Répartition du social entre Expert-Comptable et Juriste :
@@ -184,13 +184,13 @@ Ne produit jamais de contenu métier. Intervient **après** les experts, **avant
 
 Output enrichi par le Réviseur :
 ```
-"Le coût chargé est de 5 950€/mois.
+"Le coût chargé est de 4 850€/mois.
 
  📊 Confiance : haute
- ✅ Brut CC BTP N4 vérifié (4 200€)
+ ✅ Brut CC Transport vérifié (3 200€)
  ✅ Exo LODEOM vérifiée (barème 2025)
- ⚠️  Le montant inclut les indemnités BTP (panier + trajet) — détail ci-dessous
- 📎 Sources : CC BTP Guyane art. 4.2.1, Code SS art. L752-3-2"
+ ⚠️  Le montant inclut les primes de conduite et indemnités repas — détail ci-dessous
+ 📎 Sources : CC Transport Guyane, Code SS art. L752-3-2"
 ```
 
 ### Couches de chaque agent
@@ -257,10 +257,10 @@ Contenu typique du `context` JSONB :
 ```json
 {
   "entite_active": "ETPA",
-  "secteur": "BTP/Industrie",
+  "secteur": "Transformation de produits agricoles",
   "exercice": "2025",
   "donnees_collectees": { "ca": 1850000, "ebe": 222000 },
-  "decisions": ["embauche 3 conducteurs travaux validée"],
+  "decisions": ["embauche 3 opérateurs de production validée"],
   "agents_sollicites": ["expert_comptable", "juriste"]
 }
 ```
@@ -286,7 +286,7 @@ CREATE TABLE agent_feedback (
     score SMALLINT CHECK (score BETWEEN 1 AND 5),
     correction TEXT,                             -- NULL si score >= 4
     is_positive_example BOOLEAN GENERATED ALWAYS AS (score >= 4) STORED,
-    tags TEXT[] DEFAULT '{}',                    -- ex: {'sig', 'etpa', 'btp', 'lodeom'}
+    tags TEXT[] DEFAULT '{}',                    -- ex: {'sig', 'etpa', 'transport', 'lodeom'}
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -299,38 +299,38 @@ CREATE INDEX idx_feedback_tags ON agent_feedback USING GIN(tags);
 ### Flux de collaboration — Exemple concret
 
 ```
-Utilisateur : "ETPA veut embaucher 3 conducteurs de travaux. Quel impact global ?"
+Utilisateur : "ETPA veut embaucher 3 opérateurs de production. Quel impact global ?"
 
 DIRECTEUR DE MISSION
 ├── Intent : question mixte (social + fiscal + financier)
-├── Structure : ETPA (BTP/Industrie)
+├── Structure : ETPA (Transformation de produits agricoles)
 ├── Délègue en parallèle → 3 experts
 
 EXPERT-COMPTABLE SENIOR
-├── CC BTP N4 → brut 4 200€
-├── Charges patronales 42% → 1 764€
-├── Exo LODEOM compétitivité renforcée → -850€/mois
-├── Coût chargé : 5 114€ + indemnités BTP (panier + trajet) = 5 950€
-├── × 3 = 17 850€/mois → +214k€/an masse salariale
+├── CC Agroalimentaire → brut 2 100€
+├── Charges patronales 42% → 882€
+├── Exo LODEOM compétitivité renforcée → -650€/mois
+├── Coût chargé : 2 332€ + primes (panier + insalubrité) = 2 700€
+├── × 3 = 8 100€/mois → +97k€/an masse salariale
 └── Comptes impactés : 641, 645, 431, 437
 
 JURISTE SENIOR
-├── CDD ou CDI → période d'essai CC BTP = 2 mois
-├── Obligations : visite médicale BTP, OPPBTP, formation sécurité
-├── Fiscal : +214k€ charges déductibles → économie IS ~53 500€
+├── CDD ou CDI → période d'essai CC Agroalimentaire = 1 mois
+├── Obligations : visite médicale, formation hygiène HACCP
+├── Fiscal : +97k€ charges déductibles → économie IS ~24 250€
 └── TVA : pas d'impact (charges de personnel hors champ)
 
 ANALYSTE FINANCIER SENIOR
-├── EBE : passe de 12% à 8.5% du CA
-├── Seuil de rentabilité : repoussé de 2 mois
-├── BFR : +50k€ (décalage paie)
-└── Recommandation : embauche phasée (2 puis 1 à M+6)
+├── EBE : passe de 12% à 9.5% du CA
+├── Seuil de rentabilité : repoussé de 1 mois
+├── BFR : +25k€ (décalage paie)
+└── Recommandation : embauche phasée (2 puis 1 à M+3)
 
 RÉVISEUR QUALITÉ
-├── ✅ Brut CC BTP N4 vérifié (barème 2025)
+├── ✅ Brut CC Agroalimentaire vérifié (barème 2025)
 ├── ✅ Exo LODEOM vérifiée (art. L752-3-2)
-├── ✅ Calcul IS cohérent (25% × 214k)
-├── ⚠️  EBE : recalcul donne 8.3% (écart 0.2 pts, arrondi IS)
+├── ✅ Calcul IS cohérent (25% × 97k)
+├── ⚠️  EBE : recalcul donne 9.3% (écart 0.2 pts, arrondi IS)
 ├── ✅ Recommandation phasage cohérente avec trésorerie
 └── 📊 Confiance globale : haute
 
@@ -388,7 +388,7 @@ Permet à l'agent de répondre : "Le compte 607 entre dans la marge commerciale 
 | Table | Description |
 |---|---|
 | `compte_resolution` | Résolution préfixe FEC → numéro PCG (ex: "411CLIENT001" → "411") |
-| `profil_nature_charge` | Override V/F par profil sectoriel (commerce, BTP, services) |
+| `profil_nature_charge` | Override V/F par profil sectoriel (transport, agroalimentaire, holding) |
 | `entite_override_charge` | Override V/F par entité spécifique |
 
 ### Vues matérialisées (7)
@@ -419,8 +419,8 @@ Permet à l'agent de répondre : "Le compte 607 entre dans la marge commerciale 
 - 791 transferts de charges → Résultat d'exploitation, pas VA
 - Bilan fonctionnel en valeurs brutes (amort/dépréc → ressources stables)
 - Gestion des à-nouveaux (filtre pour CR, inclus pour bilan)
-- Budget saisonnalisé (proratisation BTP)
-- 20+ ratios financiers (liquidité, solvabilité, rentabilité, rotation, BTP)
+- Budget saisonnalisé (proratisation transport / saisons agricoles)
+- 20+ ratios financiers (liquidité, solvabilité, rentabilité, rotation, sectoriels)
 - Exercice comptable ≠ année civile (exercices décalés possibles)
 
 ### Architecte données

@@ -27,3 +27,4 @@ backups/
 
 # Claude Code
 .claude/
+.mcp.json

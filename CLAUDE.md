@@ -1,4 +1,4 @@
-# CLAUDE.md
+﻿# CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -209,10 +209,10 @@ Slash commands : `/speckit.constitution`, `/speckit.specify`, `/speckit.plan`, `
 
 | Structure | Activité | Token Vaultwarden |
 |---|---|---|
-| HMA | Gestion / Holding | `Pennylane API — HMA` |
-| STIVMAT | Commerce | `Pennylane API — STIVMAT` |
-| STA | Services / BTP | `Pennylane API — STA` |
-| ETPA | Industrie / BTP | `Pennylane API — ETPA` |
+| HMA | Holding | `Pennylane API — HMA` |
+| STIVMAT | Transport de personnes | `Pennylane API — STIVMAT` |
+| STA | Transport de personnes | `Pennylane API — STA` |
+| ETPA | Transformation de produits agricoles | `Pennylane API — ETPA` |
 
 Token sandbox : `Pennylane API Sandbox` (CLAUDE_SANDBOX)
 
