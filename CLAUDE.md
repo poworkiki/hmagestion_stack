@@ -104,27 +104,56 @@ Serveur MCP local pour Claude Code (configuré dans `.mcp.json`) :
 - `mcp-qdrant-hma/server.py` — FastMCP + OpenAI embeddings + Qdrant client
 - Expose la KB comptable (18 000+ chunks) comme outils natifs
 
-### Script PCG analytique
+### Scripts PCG analytique
 
 ```bash
 python3 scripts/generate-pcg-seed.py    # Génère sql/02-data/001-pcg-analytique-seed.sql
+python3 scripts/generate-pcg-qdrant.py  # Génère les embeddings et alimente Qdrant kb_pcg_analytique
 ```
 
 Source : Pennylane API `/ledger_accounts` (1 412 comptes) → mapping analytique Python (SIG, CR, Bilan, BF, V/F) → SQL seed.
 Le mapping Python dans `generate-pcg-seed.py` est la **source de vérité unique** pour la classification des comptes.
+`generate-pcg-qdrant.py` dérive la collection Qdrant `kb_pcg_analytique` à partir des mêmes données (embeddings OpenAI `text-embedding-3-small`).
 
 ### SQL Supabase
 
-Exécuter les scripts dans l'ordre numérique :
+Exécuter les scripts dans l'ordre numérique par dossier :
 ```bash
+# 1. Schéma
 psql $SUPABASE_DB_URL -f sql/01-schema/001-entite.sql
 psql $SUPABASE_DB_URL -f sql/01-schema/002-exercice.sql
-# ... etc. (ordre numérique)
+psql $SUPABASE_DB_URL -f sql/01-schema/003-pcg-analytique.sql
+psql $SUPABASE_DB_URL -f sql/01-schema/004-compte-resolution.sql
+psql $SUPABASE_DB_URL -f sql/01-schema/005-fec-import.sql
+psql $SUPABASE_DB_URL -f sql/01-schema/006-fec-ecriture.sql
+
+# 2. Données de référence
 psql $SUPABASE_DB_URL -f sql/02-data/001-pcg-analytique-seed.sql
+
+# 3. Fonctions (avant les vues qui en dépendent)
 psql $SUPABASE_DB_URL -f sql/04-functions/resolve-compte.sql
+psql $SUPABASE_DB_URL -f sql/04-functions/refresh-views.sql
+
+# 4. Vues matérialisées (ordre de dépendance)
 psql $SUPABASE_DB_URL -f sql/03-views/001-mv-balance-generale.sql
-# ... etc.
+psql $SUPABASE_DB_URL -f sql/03-views/002-mv-bilan.sql
+psql $SUPABASE_DB_URL -f sql/03-views/003-mv-bilan-fonctionnel.sql
+psql $SUPABASE_DB_URL -f sql/03-views/004-mv-compte-resultat.sql
+psql $SUPABASE_DB_URL -f sql/03-views/005-mv-resultat-differentiel.sql
+psql $SUPABASE_DB_URL -f sql/03-views/006-mv-sig.sql
+psql $SUPABASE_DB_URL -f sql/03-views/007-v-controles-coherence.sql
 ```
+
+On peut aussi exécuter les migrations via le MCP Supabase (`apply_migration`, `execute_sql`).
+
+**Ordre de rafraîchissement des vues** (géré par `refresh_all_views()`) :
+1. `mv_balance_generale` (base de toutes les autres)
+2. `mv_bilan`, `mv_compte_resultat`, `mv_sig` (dépendent de la balance, parallèles entre elles)
+3. `mv_bilan_fonctionnel`, `mv_resultat_differentiel` (dépendent du bilan ou du CR)
+
+### Workflow n8n
+
+`n8n/workflow-sync-pennylane.json` — workflow de synchronisation Pennylane → Supabase pour les 4 structures. À importer dans n8n via l'UI ou l'API.
 
 ---
 
@@ -147,8 +176,10 @@ Ajouter une entrée dans "Historique des changements" en bas du fichier.
 ### Commits
 Préfixe conventionnel obligatoire :
 ```
+feat: ajout du workflow sync Pennylane
 docs: ajout du service Mattermost dans l'inventaire
 infra: déploiement Odoo via Coolify
+sql:  nouvelle vue matérialisée mv_bilan
 chore: mise à jour des templates d'issues
 fix: correction script vw-backup
 ```
@@ -196,6 +227,8 @@ Slash commands : `/speckit.constitution`, `/speckit.specify`, `/speckit.plan`, `
 
 - Toutes les spécifications doivent être rédigées en **français**, y compris les sections Purpose et Scenarios
 - Seuls les titres de Requirements doivent rester en **anglais** avec les mots-clés `SHALL` / `MUST` pour la validation Spec-Kit
+- **Constitution** : `.specify/memory/constitution.md` — document d'autorité maximale pour les décisions architecturales. Les principes `(NON-NEGOTIABLE)` ne peuvent être modifiés que par le décideur projet
+- Artefacts de la feature en cours : `specs/001-agent-ia-comptable/` (spec, plan, tasks, research, data-model, contracts)
 
 ---
 
