@@ -57,6 +57,10 @@ COOLIFY_API_TOKEN=...
 Tous les scripts chargent automatiquement le `.env` à la racine.
 
 ```bash
+./scripts/vw-secret.sh get "Pennylane API — ETPA"                    # Récupère le password d'un secret
+./scripts/vw-secret.sh get "Pennylane API — ETPA" --field username   # Récupère un champ spécifique
+./scripts/vw-secret.sh list pennylane                                # Liste les secrets filtrés
+eval $(./scripts/vw-secret.sh export "Pennylane API — ETPA" TOKEN)   # Exporte en variable d'env
 ./scripts/vw-healthcheck.sh                              # Health check complet (HTTP, API, OAuth, Admin)
 ./scripts/vw-audit.sh                                     # Audit du coffre (éléments, stats, sécurité)
 ./scripts/vw-backup.sh [dossier_destination]              # Backup chiffré horodaté (rotation 30 derniers)
@@ -83,13 +87,21 @@ curl -s -X POST "https://coolify.hma.business/api/v1/services/{uuid}/start" \
 ### API Pennylane (4 structures)
 
 Tokens stockés dans Vaultwarden. Endpoint de base : `https://app.pennylane.com/api/external/v2`
+Doc officielle : `pennylane.readme.io/reference`
 
 ```bash
-curl -s "https://app.pennylane.com/api/external/v2/trial_balance?period_start=2025-01-01&period_end=2025-12-31" \
-  -H "Authorization: Bearer $PENNYLANE_TOKEN"
+# Récupérer un token depuis Vaultwarden puis appeler l'API
+ETPA_TOKEN=$(./scripts/vw-secret.sh get "Pennylane API — ETPA")
+curl -s "https://app.pennylane.com/api/external/v2/trial_balance?period_start=2025-01-01&period_end=2025-12-31&use_2026_api_changes=true&limit=100" \
+  -H "Authorization: Bearer $ETPA_TOKEN"
 ```
 
-Endpoints principaux : `/trial_balance`, `/ledger_entries`, `/ledger_accounts`, `/supplier_invoices`, `/customer_invoices`, `/suppliers`, `/customers`, `/journals`, `/categories`. Détails dans `docs/presentation-agent-ia-hma.md`.
+**Pagination curseur** (obligatoire depuis 2026) : `cursor` + `limit` (max 100, sauf `/ledger_accounts` max 1000). Boucler tant que `has_more == true`.
+
+Endpoints principaux : `/trial_balance`, `/ledger_entries`, `/ledger_entry_lines`, `/ledger_accounts`, `/supplier_invoices`, `/customer_invoices`, `/suppliers`, `/customers`, `/journals`, `/categories`, `/fiscal_years`, `/me`.
+Contrat API détaillé : `specs/001-agent-ia-comptable/contracts/pennylane-api.md`
+
+**Skill d'analyse** : `/pennylane-analyse` (`.claude/commands/pennylane-analyse.md`) — analyse comptable experte d'une structure via l'API Pennylane. Rapports sauvegardés dans `hma_holding/<STRUCTURE>/`.
 
 ### Qdrant (KB interne + MCP)
 
@@ -244,6 +256,18 @@ Slash commands : `/speckit.constitution`, `/speckit.specify`, `/speckit.plan`, `
 | ETPA | Transformation de produits agricoles | `Pennylane API — ETPA` |
 
 Token sandbox : `Pennylane API Sandbox` (CLAUDE_SANDBOX)
+
+### Rapports d'analyse — `hma_holding/`
+
+Les résultats d'analyse comptable par structure sont stockés en Markdown :
+```
+hma_holding/
+├── ETPA/      ← analyse-complete-2025-12.md (1er exercice, en cours)
+├── HMA/
+├── STA/
+└── STIVMAT/
+```
+Nommage : `analyse-<type>-<YYYY>-<MM>.md` — générés par le skill `/pennylane-analyse`
 
 ---
 

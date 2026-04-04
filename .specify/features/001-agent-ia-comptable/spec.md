@@ -7,12 +7,12 @@
 
 ## Contexte
 
-HMA est un cabinet de gestion/expertise comptable basé en Guyane qui gère 4 structures : HMA (holding), STIVMAT (transport de personnes), STA (transport de personnes), ETPA (transformation de produits agricoles). Le cabinet a besoin d'un assistant IA capable de répondre à des questions comptables, fiscales, juridiques et financières en s'appuyant sur les données réelles des 4 structures et une base de connaissances métier (ci-après **KB_QDRANT** — collections Qdrant vectorielles).
+HMA est un cabinet de gestion/expertise comptable basé en Guyane qui gère 4 structures : HMA (holding), STIVMAT (transport de personnes), STA (transport de personnes), ETPA (transformation de produits agricoles). Le cabinet a besoin d'un assistant IA capable de répondre à des questions comptables, fiscales, juridiques et financières en s'appuyant sur les données réelles des 4 structures et une base de connaissances métier.
 
 ### Périmètre
 
 Le système couvre 3 niveaux de questions :
-1. **Questions métier pures** : réponses basées sur KB_QDRANT (manuels DCG/DSCG, réglementation LODEOM/Girardin, conventions collectives Guyane)
+1. **Questions métier pures** : réponses basées sur la base de connaissances (manuels DCG/DSCG, réglementation LODEOM/Girardin, conventions collectives Guyane)
 2. **Questions sur les données comptables** : interrogation des données des 4 structures via l'API Pennylane et les données synchronisées en base
 3. **Questions croisées** : analyse combinant données comptables et expertise métier (ex : "Le taux de matières premières d'ETPA est-il cohérent pour la transformation agricole ?")
 
@@ -20,22 +20,10 @@ Le système couvre 3 niveaux de questions :
 
 - Les 4 tokens API Pennylane sont fonctionnels et en lecture seule
 - L'infrastructure est déjà déployée : n8n, Qdrant, Supabase, Metabase, Appsmith, Vaultwarden
-- KB_QDRANT contient déjà les manuels DCG/DSCG (18 132 points), la réglementation (11 points) et les conventions collectives (6 points)
+- La base de connaissances Qdrant contient déjà les manuels DCG/DSCG (18 132 points), la réglementation (11 points) et les conventions collectives (6 points)
 - Les utilisateurs sont des comptables et gestionnaires du cabinet HMA
 - Le système est en français exclusivement
 - Pas de consolidation légale IFRS (hors périmètre) — uniquement agrégation + élimination intra-groupe par flag
-
----
-
-## Clarifications
-
-### Session 2026-04-03
-
-- Q: Le terme "merge" dans le pattern ETL (staging → merge → refresh) est-il correct en terminologie PostgreSQL ? → A: Remplacé par **"upsert idempotent"** (`INSERT ... ON CONFLICT DO NOTHING`) — terme technique exact PostgreSQL, distinct du `MERGE` SQL standard.
-- Q: Quel terme canonique pour la base de connaissances Qdrant ? → A: **KB_QDRANT** — terme unique utilisé partout. "Base de connaissances" uniquement en première occurrence comme définition.
-- Q: Stratégie d'observabilité pour le pipeline ETL Pennylane → Supabase ? → A: `fec_import` suffit pour le Chantier A (MVP). Observabilité avancée (logs structurés, métriques, alerting Uptime Kuma) reportée en Chantier D/polish.
-- Q: MD5 pour anti-doublons : hash cryptographique ou fingerprint ? → A: **Fingerprint de déduplication** (non-cryptographique). MD5 acceptable pour ~200k écritures. Terminologie normalisée : `fingerprint_md5`.
-- Q: Score de confiance (FR-004) : quelle méthode de calcul ? → A: Reporté au **Chantier D** — la méthode de scoring sera définie lors de la conception du Réviseur Qualité (heuristique, probabiliste ou composite).
 
 ---
 
@@ -59,7 +47,7 @@ Un comptable du cabinet pose une question sur les données comptables d'une stru
 
 ### User Story 2 — Question métier juridique ou réglementaire (Priority: P1)
 
-Un gestionnaire pose une question sur la réglementation applicable (LODEOM, Girardin, conventions collectives, droit fiscal). Le système recherche dans KB_QDRANT et fournit une réponse argumentée avec les sources.
+Un gestionnaire pose une question sur la réglementation applicable (LODEOM, Girardin, conventions collectives, droit fiscal). Le système recherche dans la base de connaissances et fournit une réponse argumentée avec les sources.
 
 **Why this priority** : Les questions réglementaires ultramarines sont complexes et spécifiques — l'accès rapide à l'information est critique pour le cabinet.
 
@@ -67,8 +55,8 @@ Un gestionnaire pose une question sur la réglementation applicable (LODEOM, Gir
 
 **Acceptance Scenarios** :
 
-1. **Given** l'utilisateur pose une question juridique, **When** la réponse existe dans KB_QDRANT, **Then** le système fournit une réponse structurée avec les articles de loi ou références cités.
-2. **Given** l'utilisateur pose une question hors périmètre du KB, **When** aucune source pertinente n'est trouvée dans KB_QDRANT, **Then** le système indique que la question dépasse le périmètre de KB_QDRANT et recommande une vérification manuelle.
+1. **Given** l'utilisateur pose une question juridique, **When** la réponse existe dans la KB Qdrant, **Then** le système fournit une réponse structurée avec les articles de loi ou références cités.
+2. **Given** l'utilisateur pose une question hors périmètre du KB, **When** aucune source pertinente n'est trouvée, **Then** le système indique que la question dépasse sa base de connaissances et recommande une vérification manuelle.
 
 ---
 
@@ -78,7 +66,7 @@ Un gestionnaire pose une question complexe nécessitant l'intervention de plusie
 
 **Why this priority** : C'est la valeur différenciante du système — croiser automatiquement les données comptables, la réglementation et l'analyse financière.
 
-**Independent Test** : Peut être testé en posant "ETPA veut embaucher 3 opérateurs de production. Quel impact global ?" et en vérifiant que la réponse couvre les aspects comptable, juridique et financier.
+**Independent Test** : Peut être testé en posant "ETPA veut embaucher 3 conducteurs de travaux. Quel impact global ?" et en vérifiant que la réponse couvre les aspects comptable, juridique et financier.
 
 **Acceptance Scenarios** :
 
@@ -94,12 +82,12 @@ Les données comptables des 4 structures sont synchronisées automatiquement dep
 
 **Why this priority** : Sans données à jour, aucune question comptable ne peut recevoir de réponse fiable.
 
-**Independent Test** : Peut être testé en déclenchant une synchronisation et en vérifiant que les écritures Pennylane apparaissent dans la table `fec_ecriture` avec le bon fingerprint MD5 de déduplication.
+**Independent Test** : Peut être testé en déclenchant une synchronisation et en vérifiant que les écritures Pennylane apparaissent dans la table `fec_ecriture` avec le bon hash anti-doublons.
 
 **Acceptance Scenarios** :
 
-1. **Given** une synchronisation est déclenchée, **When** de nouvelles écritures existent dans Pennylane, **Then** elles sont importées dans `fec_ecriture` via le pattern staging → upsert idempotent → refresh.
-2. **Given** une écriture déjà importée existe, **When** la synchronisation s'exécute, **Then** l'écriture n'est pas dupliquée (contrôle par fingerprint MD5).
+1. **Given** une synchronisation est déclenchée, **When** de nouvelles écritures existent dans Pennylane, **Then** elles sont importées dans `fec_ecriture` via le pattern staging → merge → refresh.
+2. **Given** une écriture déjà importée existe, **When** la synchronisation s'exécute, **Then** l'écriture n'est pas dupliquée (contrôle par hash MD5).
 3. **Given** la synchronisation est terminée, **When** les vues matérialisées sont rafraîchies, **Then** les SIG, CR, Bilan et autres vues reflètent les données à jour.
 
 ---
@@ -153,13 +141,13 @@ Les utilisateurs notent les réponses de l'agent (1 à 5) et peuvent fournir des
 
 ### Edge Cases
 
-- **Structure inconnue** : l'utilisateur pose une question sur une 5ème structure qui n'existe pas → le système retourne un message d'erreur listant les 4 structures disponibles (HMA, STIVMAT, STA, ETPA).
-- **Langue non française** : l'utilisateur pose une question dans une langue autre que le français → le système répond en français en indiquant qu'il ne traite que les requêtes en français (Constitution V).
-- **API Pennylane indisponible** : l'API Pennylane est en erreur lors d'une question comptable → le système utilise les données synchronisées en base (dernière sync) et signale la date de fraîcheur des données.
-- **Exercice décalé** : un exercice avec des dates ≠ 01/01–31/12 est soumis → le système l'accepte techniquement (champ date_debut/date_fin flexible) mais affiche un avertissement, car les 4 structures sont calées sur l'année civile (Constitution, Contraintes Opérationnelles).
-- **Erreur critique du Réviseur** : le Réviseur détecte une erreur de calcul dans la réponse d'un expert → la réponse est bloquée, le Directeur de Mission relance l'expert avec les écarts identifiés, et la contradiction est signalée dans la réponse finale.
-- **Question hors périmètre** : l'utilisateur pose une question non comptable/juridique/financière (ex : "Quel temps fait-il ?") → le système décline poliment en rappelant son périmètre (comptabilité, fiscalité, droit, analyse financière des 4 structures HMA).
-- **Vues matérialisées obsolètes** : les vues ne sont pas à jour au moment d'une question → le système signale la date du dernier refresh et propose de déclencher un rafraîchissement si l'écart dépasse 24h.
+- Que se passe-t-il quand l'utilisateur pose une question sur une 5ème structure qui n'existe pas ?
+- Comment le système gère-t-il une question dans une langue autre que le français ?
+- Que se passe-t-il si l'API Pennylane est indisponible lors d'une question comptable ?
+- Comment le système gère-t-il un exercice comptable décalé (≠ année civile) ?
+- Que se passe-t-il quand le Réviseur détecte une erreur de calcul critique dans la réponse d'un expert ?
+- Comment le système gère-t-il une question hors périmètre (ex : "Quel temps fait-il ?") ?
+- Que se passe-t-il si les vues matérialisées ne sont pas à jour au moment d'une question ?
 
 ---
 
@@ -177,13 +165,13 @@ Les utilisateurs notent les réponses de l'agent (1 à 5) et peuvent fournir des
 
 #### Expert-Comptable Senior
 
-- **FR-006**: System MUST interroger les données comptables des 4 structures (balances, écritures) via les données synchronisées et l'API Pennylane. `[Chantier futur]` : factures (`/supplier_invoices`, `/customer_invoices`) et tiers (`/suppliers`, `/customers`) nécessitent des tables et workflows de sync dédiés.
+- **FR-006**: System MUST interroger les données comptables des 4 structures (balances, écritures, factures, tiers) via les données synchronisées et l'API Pennylane.
 - **FR-007**: System MUST calculer les coûts chargés en tenant compte des exonérations LODEOM applicables.
 - **FR-008**: System MUST identifier les comptes impactés (numéros PCG) lors d'une analyse comptable.
 
 #### Juriste Senior
 
-- **FR-009**: System MUST rechercher dans KB_QDRANT (manuels, réglementation, conventions collectives) pour répondre aux questions juridiques.
+- **FR-009**: System MUST rechercher dans la base de connaissances Qdrant (manuels, réglementation, conventions collectives) pour répondre aux questions juridiques.
 - **FR-010**: System MUST distinguer le social chiffré (paie, cotisations → Expert-Comptable) du social juridique (licenciement, contentieux → Juriste).
 
 #### Analyste Financier Senior
@@ -195,20 +183,20 @@ Les utilisateurs notent les réponses de l'agent (1 à 5) et peuvent fournir des
 #### Réviseur Qualité
 
 - **FR-014**: System MUST recalculer indépendamment les chiffres fournis par les experts pour vérification.
-- **FR-015**: System MUST vérifier que les articles et normes cités existent dans KB_QDRANT.
+- **FR-015**: System MUST vérifier que les articles et normes cités existent dans la base de connaissances.
 - **FR-016**: System MUST détecter les contradictions entre les réponses de plusieurs experts.
 
 #### Synchronisation Pennylane
 
-- **FR-017**: System MUST synchroniser les écritures comptables des 4 structures depuis Pennylane vers Supabase via un pattern staging → upsert idempotent → refresh.
-- **FR-018**: System MUST prévenir les doublons d'import via un fingerprint MD5 unique par écriture (empreinte de déduplication non-cryptographique — colonne `fingerprint_md5`).
-- **FR-019**: System MUST rafraîchir les vues matérialisées disponibles après chaque synchronisation (6 vues matérialisées + 1 vue simple non matérialisée `v_controles_coherence` dans le Chantier A, +1 vue `mv_budget_vs_realise` après le Chantier C).
+- **FR-017**: System MUST synchroniser les écritures comptables des 4 structures depuis Pennylane vers Supabase via un pattern staging → merge → refresh.
+- **FR-018**: System MUST prévenir les doublons d'import via un hash MD5 unique par écriture.
+- **FR-019**: System MUST rafraîchir les 7 vues matérialisées après chaque synchronisation.
 
 #### Modèle de données
 
 - **FR-020**: System MUST stocker les écritures au format FEC normalisé (18 colonnes + champs calculés, Art. A.47 A-1 LPF).
-- **FR-021**: System MUST maintenir un mapping des 1 412 comptes PCG avec catégories analytiques (SIG, CR, Bilan, Bilan fonctionnel, Variable/Fixe) dans Supabase (`pcg_analytique`) ET dans Qdrant (`kb_pcg_analytique` avec texte enrichi et embeddings pour le RAG des agents).
-- **FR-022** `[Chantier C]`: System MUST permettre l'override de la nature Variable/Fixe par profil sectoriel et par entité.
+- **FR-021**: System MUST maintenir un mapping des 1 412 comptes PCG avec catégories analytiques (SIG, CR, Bilan, Bilan fonctionnel, Variable/Fixe).
+- **FR-022**: System MUST permettre l'override de la nature Variable/Fixe par profil sectoriel et par entité.
 - **FR-023**: System MUST résoudre les numéros de compte FEC (avec auxiliaires) vers les comptes PCG via une table de résolution par préfixe décroissant.
 
 #### Mémoire agents
@@ -230,7 +218,7 @@ Les utilisateurs notent les réponses de l'agent (1 à 5) et peuvent fournir des
 ### Key Entities
 
 - **Entité** : une des 4 structures gérées (HMA, STIVMAT, STA, ETPA), avec activité, profil sectoriel et relation parent/enfant.
-- **Exercice** : exercice comptable par entité, calé sur l'année civile (01/01–31/12) pour les 4 structures. Le modèle de données supporte techniquement des dates flexibles mais les exercices décalés ne sont pas un cas d'usage actuel.
+- **Exercice** : exercice comptable par entité, pouvant être décalé par rapport à l'année civile.
 - **Écriture FEC** : écriture comptable normalisée au format FEC, rattachée à une entité et un exercice.
 - **Compte PCG** : un des 1 412 comptes du Plan Comptable Général, avec mapping analytique (SIG, CR, Bilan, V/F).
 - **Budget** : budget prévisionnel par ligne ou catégorie, par entité et exercice.
@@ -243,11 +231,11 @@ Les utilisateurs notent les réponses de l'agent (1 à 5) et peuvent fournir des
 
 ### Measurable Outcomes
 
-- **SC-001** `[Chantier D]` : Les utilisateurs obtiennent une réponse à une question comptable simple en moins de 30 secondes.
-- **SC-002** `[Chantier D]` : Les réponses multi-experts (questions croisées) sont délivrées en moins de 2 minutes.
-- **SC-003** `[Chantier D]` : 95% des réponses chiffrées correspondent aux données sources (Pennylane / Supabase) après vérification du Réviseur.
-- **SC-004** `[Chantier D]` : 100% des réponses citent au moins une source vérifiable (article de loi, compte PCG, collection KB).
-- **SC-005** `[Chantier A]` : La synchronisation Pennylane des 4 structures s'exécute sans doublon sur 3 cycles consécutifs.
-- **SC-006** `[Chantier A]` : Les 6 vues matérialisées du Chantier A se rafraîchissent en moins de 60 secondes après synchronisation (via `refresh_all_views()`).
-- **SC-007** `[Chantier E]` : Le score de confiance moyen des réponses atteint "haute" pour 80% des questions après 30 jours d'utilisation avec feedback.
-- **SC-008** `[Chantier D+]` : Les gestionnaires réduisent de 50% le temps passé à chercher manuellement des informations comptables et réglementaires.
+- **SC-001** : Les utilisateurs obtiennent une réponse à une question comptable simple en moins de 30 secondes.
+- **SC-002** : Les réponses multi-experts (questions croisées) sont délivrées en moins de 2 minutes.
+- **SC-003** : 95% des réponses chiffrées correspondent aux données sources (Pennylane / Supabase) après vérification du Réviseur.
+- **SC-004** : 100% des réponses citent au moins une source vérifiable (article de loi, compte PCG, collection KB).
+- **SC-005** : La synchronisation Pennylane des 4 structures s'exécute sans doublon sur 3 cycles consécutifs.
+- **SC-006** : Les 7 vues matérialisées se rafraîchissent en moins de 60 secondes après synchronisation.
+- **SC-007** : Le score de confiance moyen des réponses atteint "haute" pour 80% des questions après 30 jours d'utilisation avec feedback.
+- **SC-008** : Les gestionnaires réduisent de 50% le temps passé à chercher manuellement des informations comptables et réglementaires.

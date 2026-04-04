@@ -37,7 +37,7 @@
 - [X] T005b [P] Créer le script `scripts/generate-pcg-qdrant.py` : lecture pcg_analytique depuis Supabase, génération du champ `contenu` enrichi en français, embeddings OpenAI `text-embedding-3-small`, upsert dans Qdrant `kb_pcg_analytique` avec IDs uuid5 déterministes, index payload (classe, sig_solde, cr_rubrique, bf_categorie, nature_defaut, number)
 - [ ] T005c Exécuter `generate-pcg-qdrant.py` pour créer la collection `kb_pcg_analytique` (1 412 points, 1 536 dimensions, distance cosine) et vérifier COUNT Supabase == COUNT Qdrant
 
-- [ ] T005d Valider la cohérence du seed PCG (`generate-pcg-seed.py`) avec le référentiel `docs/compta_analytique.md` : vérifier que chaque sig_solde, cr_rubrique, bilan_poste, bf_categorie et nature_defaut correspond aux comptes PCG listés dans les sections 1 à 6 du référentiel (Constitution III — Référentiel-Driven)
+- [ ] T005d Valider la cohérence du seed PCG (`generate-pcg-seed.py`) avec le référentiel `docs/compta_analytique.md` : revue manuelle par échantillonnage (10 comptes par sig_solde, 5 par cr_rubrique, 5 par bilan_poste) + vérification exhaustive que chaque valeur distincte de sig_solde, cr_rubrique, bilan_poste, bf_categorie et nature_defaut dans le seed existe dans les sections 1 à 6 du référentiel (Constitution III — Référentiel-Driven)
 
 **Checkpoint**: Tables de référence prêtes, 1 412 comptes PCG chargés dans Supabase ET Qdrant, mapping validé contre le référentiel, fonction resolve_compte() opérationnelle
 
@@ -63,7 +63,7 @@
 - [X] T014 [US4] Ajouter le noeud SQL : MERGE staging → `fec_ecriture` (INSERT ... ON CONFLICT (hash_md5) DO NOTHING) + UPDATE pcg_numero via resolve_compte() dans n8n/workflow-sync-pennylane.json
 - [X] T015 [US4] Ajouter le noeud SQL : INSERT dans `fec_import` avec stats (nb_lignes_brut, nb_lignes_inserees, duree_secondes, statut) dans n8n/workflow-sync-pennylane.json
 - [X] T016 [US4] Paramétrer la boucle 4 structures : credentials Pennylane par entité (tokens depuis Vaultwarden), mapping entite_id + exercice_id (résolu par requête : exercice non clôturé le plus récent pour l'entité) dans n8n/workflow-sync-pennylane.json
-- [X] T017 [US4] Ajouter le noeud SQL : appel `refresh_all_views()` après merge dans n8n/workflow-sync-pennylane.json
+- [X] T017 [US4] Ajouter le noeud SQL : appel `refresh_all_views()` après upsert idempotent dans n8n/workflow-sync-pennylane.json
 - [X] T018 [US4] Ajouter gestion d'erreurs : retry 3x avec backoff sur 429/500, alerte sur 401, log erreur dans fec_import dans n8n/workflow-sync-pennylane.json
 
 **Checkpoint**: Sync Pennylane → Supabase fonctionnelle pour les 4 structures, écritures FEC normalisées, pas de doublons
@@ -91,7 +91,7 @@
 
 ### Vue de contrôle
 
-- [X] T026 [US1] Créer `v_controles_coherence` (vue simple) : équilibre D=C par écriture, clôture N-1 = ouverture N, doublons hash, comptes non résolus (pcg_numero IS NULL) dans sql/03-views/007-v-controles-coherence.sql
+- [X] T026 [US1] Créer `v_controles_coherence` (vue simple non matérialisée) : équilibre D=C par écriture, clôture N-1 = ouverture N, doublons hash, comptes non résolus (pcg_numero IS NULL) dans sql/03-views/007-v-controles-coherence.sql
 
 **Checkpoint**: 6 vues matérialisées + 1 vue contrôle opérationnelles, états financiers calculés pour les 4 structures
 

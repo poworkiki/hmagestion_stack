@@ -106,9 +106,9 @@ scripts/
 | Étape | Livrable | Dépend de |
 |---|---|---|
 | Workflow n8n staging | Table temporaire, récupération `/ledger_entries` | fec_ecriture |
-| Workflow n8n merge | UPSERT staging → fec_ecriture (hash anti-doublons) | staging |
-| Workflow n8n refresh | REFRESH CONCURRENTLY toutes les vues mat. | merge |
-| Boucle 4 structures | Paramétrage tokens Vaultwarden par structure | merge |
+| Workflow n8n upsert | UPSERT idempotent staging → fec_ecriture (INSERT ON CONFLICT DO NOTHING sur hash_md5) | staging |
+| Workflow n8n refresh | REFRESH CONCURRENTLY toutes les vues mat. | upsert |
+| Boucle 4 structures | Paramétrage tokens Vaultwarden par structure | upsert |
 
 ### Phase A4 — Vues matérialisées
 

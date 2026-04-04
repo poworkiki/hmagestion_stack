@@ -1,0 +1,13 @@
+# ETL Pennylane -> PostgreSQL
+pg8000>=1.31
+requests>=2.31
+
+# PCG seed (Pennylane API)
+# (pas de dependance supplementaire)
+
+# Qdrant embeddings
+qdrant-client>=1.9
+openai>=1.30
+
+# Utilitaires
+python-dateutil>=2.9

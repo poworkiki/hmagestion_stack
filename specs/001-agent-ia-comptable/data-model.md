@@ -87,6 +87,10 @@ pcg_analytique (1 412 comptes PCG — table de référence autonome)
 
 ## Tables FEC
 
+### _staging_fec (table temporaire)
+
+Même structure que `fec_ecriture`, sans contraintes d'intégrité (pas de FK, pas de UNIQUE sur hash_md5). **Cycle de vie** : TRUNCATE au début de chaque run de synchronisation, INSERT batch depuis Pennylane, puis MERGE vers `fec_ecriture`. N'est jamais lue en dehors du workflow n8n.
+
 ### fec_import
 
 | Colonne | Type | Contrainte | Description |
@@ -202,7 +206,7 @@ Soldes par compte, entité, exercice et mois.
 | total_credit | SUM(credit) |
 | solde | SUM(debit) - SUM(credit) |
 
-**Filtre** : Exclut les à-nouveaux pour les comptes de classe 6 et 7 (journal_code != 'AN' / 'OD' d'ouverture).
+**Filtre à-nouveaux (classes 6-7)** : Exclut les écritures dont `journal_code IN ('AN', 'RAN')` (journaux d'à-nouveaux). Les écritures OD normales sont conservées — seuls les journaux spécifiquement dédiés aux à-nouveaux sont filtrés.
 
 ### mv_bilan
 
@@ -283,7 +287,7 @@ MCV, taux MCV, seuil de rentabilité, répartition V/F.
 | sig_solde | Nom du solde (Marge commerciale, VA, EBE...) |
 | montant | Calcul selon sig_signe dans pcg_analytique |
 
-### v_controles_coherence (vue simple, pas matérialisée)
+### v_controles_coherence (vue simple non matérialisée)
 
 | Contrôle | Logique |
 |---|---|

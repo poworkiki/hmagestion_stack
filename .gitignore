@@ -25,6 +25,17 @@ node_modules/
 # Backups
 backups/
 
+# Python
+__pycache__/
+*.pyc
+
+# Fichiers temporaires
+sync_*.sql
+*.png
+
+# Playwright
+.playwright-mcp/
+
 # Claude Code
 .claude/
 .mcp.json
