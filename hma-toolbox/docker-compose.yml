@@ -15,6 +15,11 @@ services:
       - PENNYLANE_TOKEN_STIVMAT=${PENNYLANE_TOKEN_STIVMAT}
       - PENNYLANE_TOKEN_STA=${PENNYLANE_TOKEN_STA}
       - PENNYLANE_TOKEN_ETPA=${PENNYLANE_TOKEN_ETPA}
+      # Odoo (XML-RPC, reseau Docker interne ou HTTPS)
+      - ODOO_URL=${ODOO_URL:-https://odoo.hma.business}
+      - ODOO_DB=${ODOO_DB:-HMA}
+      - ODOO_USER=${ODOO_USER:-hmagestion@gmail.com}
+      - ODOO_PASSWORD=${ODOO_PASSWORD}
       # Qdrant (pour generate-pcg-qdrant.py)
       - QDRANT_URL=${QDRANT_URL:-https://qdrant.hma.business:443}
       - QDRANT_API_KEY=${QDRANT_API_KEY}
@@ -23,6 +28,8 @@ services:
     # Exemples :
     #   docker compose run toolbox scripts/sync-pennylane.py
     #   docker compose run toolbox scripts/sync-pennylane.py --structure HMA
+    #   docker compose run toolbox scripts/sync-fec-to-odoo.py
+    #   docker compose run toolbox scripts/sync-fec-to-odoo.py --structure ETPA --dry-run
     #   docker compose run toolbox scripts/generate-pcg-qdrant.py
     entrypoint: ["python"]
     command: ["--version"]
