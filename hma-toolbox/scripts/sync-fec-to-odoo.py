@@ -74,12 +74,20 @@ def get_odoo_conn():
     return models, db, uid, password
 
 
+# === Mapping structures -> societes Odoo ===
+STRUCTURE_COMPANY_MAP = {
+    'HMA': 1,
+    'STIVMAT': 2,
+    'STA': 3,
+    'ETPA': 4,
+}
+
 # === Mapping structures -> journaux Odoo ===
 STRUCTURE_JOURNAL_MAP = {
-    'HMA': {'sale': 'VT-HM', 'purchase': 'AC-HM', 'general': 'OD'},
-    'STIVMAT': {'sale': 'VT-SV', 'purchase': 'AC-SV', 'general': 'OD'},
-    'STA': {'sale': 'VT-SA', 'purchase': 'AC-SA', 'general': 'OD'},
-    'ETPA': {'sale': 'VT-EP', 'purchase': 'AC-EP', 'general': 'OD'},
+    'HMA': {'sale': 'VT-HM', 'purchase': 'AC-HM', 'bank': 'BQ-HM', 'cash': 'CA-HM', 'general': 'OD'},
+    'STIVMAT': {'sale': 'VT-SV', 'purchase': 'AC-SV', 'bank': 'BQ-SV', 'cash': 'CA-SV', 'general': 'OD'},
+    'STA': {'sale': 'VT-SA', 'purchase': 'AC-SA', 'bank': 'BQ-SA', 'cash': 'CA-SA', 'general': 'OD'},
+    'ETPA': {'sale': 'VT-EP', 'purchase': 'AC-EP', 'bank': 'BQ-EP', 'cash': 'CA-EP', 'general': 'OD'},
 }
 
 # Mapping journal_code Pennylane -> type Odoo
@@ -107,10 +115,11 @@ def resolve_journal_code(pg_journal_code, structure_code):
 
 
 def load_odoo_journals(models, db, uid, pwd):
-    """Charge le mapping code -> id des journaux Odoo."""
+    """Charge le mapping code -> id des journaux Odoo (toutes societes)."""
     journals = models.execute_kw(db, uid, pwd,
         'account.journal', 'search_read', [[]],
-        {'fields': ['code', 'id', 'type']}
+        {'fields': ['code', 'id', 'type', 'company_id'],
+         'context': {'allowed_company_ids': [1, 2, 3, 4]}}
     )
     return {j['code']: j for j in journals}
 
@@ -352,8 +361,10 @@ def create_odoo_moves(models, db, uid, pwd, moves_grouped, structure_code,
 
         # Creer le account.move dans Odoo
         try:
+            company_id = STRUCTURE_COMPANY_MAP.get(structure_code, 1)
             move_vals = {
                 'journal_id': journal['id'],
+                'company_id': company_id,
                 'date': date_str,
                 'ref': ref,
                 'move_type': 'entry',
