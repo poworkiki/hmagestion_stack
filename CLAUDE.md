@@ -46,7 +46,7 @@ COOLIFY_API_TOKEN=$(grep '^COOLIFY_API_TOKEN=' .env | cut -d= -f2-)
 
 Variables requises dans `.env` :
 ```
-VAULTWARDEN_URL=https://vault.hma.business
+VAULTWARDEN_URL=https://vaultwarden.poworkiki.cloud
 VAULTWARDEN_CLIENT_ID=...
 VAULTWARDEN_CLIENT_SECRET=...
 COOLIFY_API_TOKEN=...
@@ -163,6 +163,28 @@ On peut aussi exécuter les migrations via le MCP Supabase (`apply_migration`, `
 2. `mv_bilan`, `mv_compte_resultat`, `mv_sig` (dépendent de la balance, parallèles entre elles)
 3. `mv_bilan_fonctionnel`, `mv_resultat_differentiel` (dépendent du bilan ou du CR)
 
+### ETL Pennylane (sync incrémental)
+
+```bash
+# Script Python standalone (requiert pg8000, requests)
+python3 scripts/sync-pennylane.py                     # Sync les 4 structures
+python3 scripts/sync-pennylane.py --structure ETPA     # Sync une seule structure
+python3 scripts/sync-pennylane.py --full-sync          # Force re-sync complet
+
+# Via le conteneur hma-toolbox (Docker, pas besoin de deps locales)
+cd hma-toolbox
+docker compose run toolbox scripts/sync-pennylane.py
+docker compose run toolbox scripts/sync-pennylane.py --structure HMA
+```
+
+Le sync utilise un fingerprint MD5 pour la déduplication et gère la pagination curseur + retry/backoff (429).
+
+### Déploiement workflow n8n
+
+```bash
+python3 scripts/deploy-n8n-workflow.py n8n/workflow-sync-pennylane.json   # Déploie via l'API n8n
+```
+
 ### Workflow n8n
 
 `n8n/workflow-sync-pennylane.json` — workflow de synchronisation Pennylane → Supabase pour les 4 structures. À importer dans n8n via l'UI ou l'API.
@@ -211,6 +233,171 @@ Branches : main (prod) / develop (staging) / feature/* / fix/*
 - Privilégier les images Docker officielles pour les services
 - Interface claire et minimaliste, pas de mode sombre pour le MVP
 - Les tokens API (Pennylane, OpenAI, Qdrant) sont stockés **exclusivement dans Vaultwarden** — ne jamais les stocker en base PostgreSQL en clair
+
+---
+
+## Gestion des Credentials — Vaultwarden
+
+Tous les credentials, clés API, secrets et accès de l'infrastructure HMA sont centralisés dans **Vaultwarden**, organisation **`stack_hma`**.
+
+### Accès Vaultwarden
+
+| Élément | Valeur |
+|---------|--------|
+| URL | `https://vaultwarden.poworkiki.cloud` |
+| Compte | `poworkiki@gmail.com` |
+| Organisation | `stack_hma` |
+| Admin panel | `https://vaultwarden.poworkiki.cloud/admin` |
+
+### Règles obligatoires
+
+1. **Ne jamais hardcoder de secrets** dans le code, les fichiers `.env` commités, les prompts, ou les commentaires. Utiliser des variables d'environnement ou des références au coffre.
+2. **Avant de créer un credential**, vérifier s'il existe déjà : `./scripts/vw-secret.sh list <mot-clé>`. Éviter les doublons.
+3. **Tout nouveau credential** (clé API, token, mot de passe de service, accès BDD, etc.) doit être **enregistré dans Vaultwarden** immédiatement après création.
+4. **Rotation de secrets** : utiliser `vw-secret.sh set` pour mettre à jour l'entrée existante — ne jamais créer de doublon.
+5. **Nommage normalisé** des entrées : `<Type> — <Service/Structure>`. Exemples :
+   - `Pennylane API — ETPA`
+   - `PostgreSQL — Odoo`
+   - `n8n API Key — HMA`
+
+### Authentification API (OAuth 2.0 client_credentials)
+
+Variables requises dans `.env` (gitignored, **jamais commité**) :
+```
+VAULTWARDEN_URL=https://vaultwarden.poworkiki.cloud
+VAULTWARDEN_CLIENT_ID=...
+VAULTWARDEN_CLIENT_SECRET=...
+```
+
+⚠️ Le `.env` contient des mots de passe avec caractères spéciaux (`$`, `!`, `#`). **Ne jamais utiliser `source .env`**. Les scripts chargent le `.env` automatiquement via parsing ligne par ligne.
+
+### Scripts CLI — Référence complète
+
+Tous les scripts sont dans `scripts/` et chargent automatiquement le `.env` à la racine.
+
+#### Opérations CRUD sur les secrets
+
+```bash
+# LIRE un secret (password par défaut)
+./scripts/vw-secret.sh get "Pennylane API — ETPA"
+
+# LIRE un champ spécifique
+./scripts/vw-secret.sh get "Pennylane API — ETPA" --field username
+./scripts/vw-secret.sh get "Pennylane API — ETPA" --field uri
+./scripts/vw-secret.sh get "Pennylane API — ETPA" --field notes
+
+# LIRE tout le secret en JSON (password masqué)
+./scripts/vw-secret.sh get "Pennylane API — ETPA" --json
+
+# LISTER les secrets (avec filtre optionnel insensible à la casse)
+./scripts/vw-secret.sh list                    # tout le coffre
+./scripts/vw-secret.sh list pennylane          # filtré
+
+# CRÉER un nouveau secret
+./scripts/vw-secret.sh set "Nom du Secret" "username" "password" "https://url.service"
+
+# METTRE À JOUR un secret existant (même nom = update automatique via PUT)
+./scripts/vw-secret.sh set "Nom du Secret" "new_user" "new_password" "https://new-url"
+
+# EXPORTER en variable d'environnement (pour scripts chaînés)
+eval $(./scripts/vw-secret.sh export "Pennylane API — ETPA" PENNYLANE_TOKEN)
+```
+
+#### Opérations de maintenance
+
+```bash
+# HEALTH CHECK complet (HTTP, API Config, OAuth, Admin Panel)
+./scripts/vw-healthcheck.sh
+
+# AUDIT du coffre (inventaire, stats par type, vérifications sécurité)
+./scripts/vw-audit.sh
+
+# BACKUP chiffré horodaté (rotation automatique : 30 derniers conservés)
+./scripts/vw-backup.sh                        # dans backups/ par défaut
+./scripts/vw-backup.sh /chemin/custom          # dossier personnalisé
+
+# AJOUT rapide (alternative simplifiée à vw-secret.sh set)
+./scripts/vw-add.sh "Nom" "username" "password" "https://url"
+
+# OBTENIR un token OAuth brut (pour scripts custom)
+source scripts/vw-auth.sh                     # exporte $VW_ACCESS_TOKEN
+```
+
+### Workflow : Création d'un nouveau service
+
+Quand un nouveau service est déployé (ex: nouveau conteneur Coolify) :
+
+1. **Déployer** le service avec des credentials temporaires
+2. **Vérifier** que le credential n'existe pas déjà :
+   ```bash
+   ./scripts/vw-secret.sh list <nom-service>
+   ```
+3. **Enregistrer** le credential dans Vaultwarden :
+   ```bash
+   ./scripts/vw-secret.sh set "<Type> — <Service>" "<username>" "<password>" "<url>"
+   ```
+4. **Vérifier** l'enregistrement :
+   ```bash
+   ./scripts/vw-secret.sh get "<Type> — <Service>" --json
+   ```
+5. **Mettre à jour** `docs/services.md` si c'est un nouveau service
+
+### Workflow : Rotation d'un secret
+
+1. **Générer** le nouveau secret côté service
+2. **Mettre à jour** dans Vaultwarden (`set` avec le même nom fait un PUT) :
+   ```bash
+   ./scripts/vw-secret.sh set "Nom Existant" "user" "nouveau_password" "url"
+   ```
+3. **Mettre à jour** le `.env` local si le secret y est référencé
+4. **Redémarrer** les services impactés
+5. **Backup** après rotation : `./scripts/vw-backup.sh`
+
+### Workflow : Récupération d'un token pour appel API
+
+```bash
+# Méthode 1 : variable inline
+TOKEN=$(./scripts/vw-secret.sh get "Pennylane API — ETPA")
+curl -s "https://app.pennylane.com/api/external/v2/me" -H "Authorization: Bearer $TOKEN"
+
+# Méthode 2 : export pour la session
+eval $(./scripts/vw-secret.sh export "Pennylane API — ETPA" PENNYLANE_TOKEN)
+curl -s "https://app.pennylane.com/api/external/v2/me" -H "Authorization: Bearer $PENNYLANE_TOKEN"
+```
+
+### API REST directe (pour scripts Python ou cas avancés)
+
+```
+POST /identity/connect/token          → Obtenir un access_token (OAuth 2.0 client_credentials)
+GET  /api/ciphers                     → Lister tous les secrets
+POST /api/ciphers                     → Créer un secret (type: 1 = Login)
+PUT  /api/ciphers/{id}                → Mettre à jour un secret
+DELETE /api/ciphers/{id}              → Supprimer un secret (irréversible)
+GET  /api/sync                        → Export complet du coffre (pour backup/audit)
+GET  /alive                           → Health check HTTP
+GET  /api/config                      → Config serveur
+```
+
+Headers : `Authorization: Bearer <access_token>`, `Content-Type: application/json`.
+
+### Contenu actuel du coffre stack_hma
+
+| Catégorie | Entrées |
+|-----------|---------|
+| **Infra VPS** | VPS Hostinger (root), Coolify Admin, PostgreSQL |
+| **Apps HMA** | n8n, Odoo, Apache Superset, NocoDB, Metabase, Uptime Kuma |
+| **APIs** | Pennylane (ETPA, HMA, STIVMAT, STA, Sandbox), OpenAI, Claude Code HMA |
+| **Bases de données** | Odoo PostgreSQL, n8n PostgreSQL, PostgreSQL standalone, Supabase Cloud (x2) |
+| **Vecteur** | Qdrant HMA, Qdrant Source |
+| **Comptes** | GitHub, Gmail HMA, auth.hostinger.com, Vaultwarden Admin HMA |
+
+### Comportement automatique de Claude Code
+
+- **Création de service** : proposer `vw-secret.sh set` pour enregistrer les credentials
+- **Consultation de secret** : utiliser `vw-secret.sh get` plutôt que chercher dans le code ou les `.env`
+- **Modification d'infra** : exécuter `vw-healthcheck.sh` pour vérifier que Vaultwarden est opérationnel
+- **Après rotation de secret** : proposer `vw-backup.sh`
+- **Ne jamais afficher un password en clair** dans les réponses — utiliser `***` si besoin de référencer un secret
 
 ---
 
@@ -273,7 +460,7 @@ Nommage : `analyse-<type>-<YYYY>-<MM>.md` — générés par le skill `/pennylan
 
 ## Référentiel formules comptables
 
-`docs/compta_analytique.md` — spécification technique exhaustive (1 575 lignes) pour l'implémentation des vues SQL :
+`docs/compta_analytique.md` — spécification technique exhaustive (~2 600 lignes) pour l'implémentation des vues SQL :
 - **SIG** : 9 soldes + CAF (méthodes additive et soustractive), comptes PCG exacts, formules SQL
 - **Compte de Résultat** : produits/charges par rubrique
 - **Bilan comptable** : actif (brut-amort=net), passif

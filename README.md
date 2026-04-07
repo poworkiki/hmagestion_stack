@@ -53,7 +53,7 @@ Voir le fichier détaillé → **[docs/services.md](docs/services.md)**
 | Coolify | Infrastructure / PaaS | [coolify.hma.business](https://coolify.hma.business) | ✅ Actif |
 | Traefik | Reverse Proxy / SSL | — | ✅ Actif |
 | Uptime Kuma | Monitoring | [status.hma.business](https://status.hma.business) | ✅ Actif |
-| Vaultwarden | Mots de passe | [vault.hma.business](https://vault.hma.business) | ✅ Actif |
+| Vaultwarden | Mots de passe | [vaultwarden.poworkiki.cloud](https://vaultwarden.poworkiki.cloud) | ✅ Actif |
 | Odoo 18 | ERP / CRM | [odoo.hma.business](https://odoo.hma.business) | ✅ Actif |
 | Apache Superset | BI / Data Visualization | [superset.hma.business](https://superset.hma.business) | ✅ Actif |
 | n8n | Workflow Automation | [n8n.hma.business](https://n8n.hma.business) | ✅ Actif |

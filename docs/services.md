@@ -22,7 +22,7 @@
 | Nom | Rôle | URL | Instance Coolify | Statut | Dépôt GitHub | Notes |
 |---|---|---|---|---|---|---|
 | Uptime Kuma | Monitoring / Status page | [status.hma.business](https://status.hma.business) | hma-uptime-kuma | ✅ Actif | — | Surveillance des services |
-| Vaultwarden | Gestionnaire de mots de passe | [vault.hma.business](https://vault.hma.business) | hma-vaultwarden | ✅ Actif | — | Compatible clients Bitwarden |
+| Vaultwarden | Gestionnaire de mots de passe | [vaultwarden.poworkiki.cloud](https://vaultwarden.poworkiki.cloud) | hma-vaultwarden | ✅ Actif | — | Compatible clients Bitwarden |
 
 ---
 
@@ -93,7 +93,7 @@ Copier-coller ce bloc dans la section appropriée lors de l'ajout d'un nouveau s
 | 2026-03 | DNS `hma.business` | Zone DNS Hostinger configurée | `A @`, `A www`, `A coolify`, `A *` pointent vers le VPS |
 | 2026-03 | VPS Hostinger | Hardening sécurité | UFW, fail2ban, SSH clé uniquement, sysctl durci |
 | 2026-03 | Uptime Kuma | Déployé via Coolify | `status.hma.business` opérationnel |
-| 2026-03 | Vaultwarden | Déployé via Coolify | `vault.hma.business` opérationnel, inscriptions désactivées |
+| 2026-03 | Vaultwarden | Déployé via Coolify | `vaultwarden.poworkiki.cloud` opérationnel, inscriptions désactivées |
 | 2026-03 | Odoo 18 | Déployé via Coolify | `odoo.hma.business` opérationnel — ERP/CRM |
 | 2026-03 | Apache Superset | Déployé via Coolify | `superset.hma.business` opérationnel — BI |
 | 2026-03 | n8n | Déployé via Coolify | `n8n.hma.business` opérationnel — Workflow Automation |
