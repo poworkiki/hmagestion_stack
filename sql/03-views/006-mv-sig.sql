@@ -82,9 +82,15 @@ sig_cascade AS (
 
     UNION ALL
 
-    -- CAF methode additive : Resultat net + dotations - reprises + VCEAC - PCEA - quote-part sub
-    SELECT entite_id, exercice_id, 9, 'CAF',
-        COALESCE((SELECT montant FROM sig_bruts b WHERE b.sig_solde = 'CAF' AND b.entite_id = e.entite_id AND b.exercice_id = e.exercice_id), 0)
+    -- CAF methode additive (ref: docs/compta_analytique.md section 1.9)
+    -- CAF = Resultat net + dotations (681+686+687) - reprises (781+786+787) + VCEAC (675) - PCEA (775) - quote-part sub (777)
+    SELECT e.entite_id, e.exercice_id, 9, 'CAF',
+        COALESCE((SELECT montant FROM sig_bruts b WHERE b.sig_solde = 'Resultat de l''exercice' AND b.entite_id = e.entite_id AND b.exercice_id = e.exercice_id), 0)
+        + COALESCE((SELECT SUM(fe.debit - fe.credit) FROM fec_ecriture fe WHERE fe.entite_id = e.entite_id AND fe.exercice_id = e.exercice_id AND fe.journal_code NOT IN ('AN', 'OD-AN', 'RAN') AND (fe.pcg_numero LIKE '681%' OR fe.pcg_numero LIKE '686%' OR fe.pcg_numero LIKE '687%')), 0)
+        - COALESCE((SELECT SUM(fe.credit - fe.debit) FROM fec_ecriture fe WHERE fe.entite_id = e.entite_id AND fe.exercice_id = e.exercice_id AND fe.journal_code NOT IN ('AN', 'OD-AN', 'RAN') AND (fe.pcg_numero LIKE '781%' OR fe.pcg_numero LIKE '786%' OR fe.pcg_numero LIKE '787%')), 0)
+        + COALESCE((SELECT SUM(fe.debit - fe.credit) FROM fec_ecriture fe WHERE fe.entite_id = e.entite_id AND fe.exercice_id = e.exercice_id AND fe.journal_code NOT IN ('AN', 'OD-AN', 'RAN') AND fe.pcg_numero LIKE '675%'), 0)
+        - COALESCE((SELECT SUM(fe.credit - fe.debit) FROM fec_ecriture fe WHERE fe.entite_id = e.entite_id AND fe.exercice_id = e.exercice_id AND fe.journal_code NOT IN ('AN', 'OD-AN', 'RAN') AND fe.pcg_numero LIKE '775%'), 0)
+        - COALESCE((SELECT SUM(fe.credit - fe.debit) FROM fec_ecriture fe WHERE fe.entite_id = e.entite_id AND fe.exercice_id = e.exercice_id AND fe.journal_code NOT IN ('AN', 'OD-AN', 'RAN') AND fe.pcg_numero LIKE '777%'), 0)
     FROM (SELECT DISTINCT entite_id, exercice_id FROM sig_bruts) e
 )
 SELECT

@@ -67,7 +67,7 @@ def get_mapping(num):
         elif n.startswith("11"):
             bilan_poste = "Report a nouveau"
         elif n.startswith("12"):
-            bilan_poste = "Resultat de l exercice"
+            bilan_poste = "Resultat de l'exercice"
         elif n.startswith("13"):
             bilan_poste = "Subventions d investissement"
         elif n.startswith("14"):
@@ -207,7 +207,7 @@ def get_mapping(num):
             nature_defaut = "variable"
         # MOYEN: 6033/6034/6035 = variation stocks produits finis → Production, pas VA
         elif n.startswith("6033") or n.startswith("6034") or n.startswith("6035"):
-            sig_solde = "Production de l exercice"
+            sig_solde = "Production de l'exercice"
             sig_signe = -1
             cr_rubrique = "Variation de stocks produits"
             nature_defaut = "variable"
@@ -235,7 +235,7 @@ def get_mapping(num):
             cr_rubrique = "Charges de personnel"
             nature_defaut = "fixe"
         elif n.startswith("65"):
-            sig_solde = "Resultat d exploitation"
+            sig_solde = "Resultat d'exploitation"
             sig_signe = -1
             cr_rubrique = "Autres charges de gestion courante"
             nature_defaut = "fixe"
@@ -250,7 +250,7 @@ def get_mapping(num):
             cr_rubrique = "Charges exceptionnelles"
             nature_defaut = "fixe"
         elif n.startswith("681"):
-            sig_solde = "Resultat d exploitation"
+            sig_solde = "Resultat d'exploitation"
             sig_signe = -1
             cr_rubrique = "DAP exploitation"
             nature_defaut = "fixe"
@@ -265,17 +265,17 @@ def get_mapping(num):
             cr_rubrique = "DAP exceptionnel"
             nature_defaut = "fixe"
         elif n.startswith("68"):
-            sig_solde = "Resultat d exploitation"
+            sig_solde = "Resultat d'exploitation"
             sig_signe = -1
             cr_rubrique = "DAP"
             nature_defaut = "fixe"
         elif n.startswith("691"):
-            sig_solde = "Resultat de l exercice"
+            sig_solde = "Resultat de l'exercice"
             sig_signe = -1
             cr_rubrique = "Participation des salaries"
             nature_defaut = "fixe"
         elif n.startswith("69"):
-            sig_solde = "Resultat de l exercice"
+            sig_solde = "Resultat de l'exercice"
             sig_signe = -1
             cr_rubrique = "Impots sur les benefices"
             nature_defaut = "fixe"
@@ -290,22 +290,22 @@ def get_mapping(num):
             cr_rubrique = "Ventes de marchandises"
             nature_defaut = "variable"
         elif n.startswith("70"):
-            sig_solde = "Production de l exercice"
+            sig_solde = "Production de l'exercice"
             sig_signe = 1
             cr_rubrique = "Production vendue"
             nature_defaut = "variable"
         elif n.startswith("713"):
-            sig_solde = "Production de l exercice"
+            sig_solde = "Production de l'exercice"
             sig_signe = 1
             cr_rubrique = "Production stockee"
             nature_defaut = "variable"
         elif n.startswith("71"):
-            sig_solde = "Production de l exercice"
+            sig_solde = "Production de l'exercice"
             sig_signe = 1
             cr_rubrique = "Production stockee"
             nature_defaut = "variable"
         elif n.startswith("72"):
-            sig_solde = "Production de l exercice"
+            sig_solde = "Production de l'exercice"
             sig_signe = 1
             cr_rubrique = "Production immobilisee"
             nature_defaut = "variable"
@@ -315,7 +315,7 @@ def get_mapping(num):
             cr_rubrique = "Subventions d exploitation"
             nature_defaut = "fixe"
         elif n.startswith("75"):
-            sig_solde = "Resultat d exploitation"
+            sig_solde = "Resultat d'exploitation"
             sig_signe = 1
             cr_rubrique = "Autres produits de gestion courante"
             nature_defaut = "fixe"
@@ -330,7 +330,7 @@ def get_mapping(num):
             cr_rubrique = "Produits exceptionnels"
             nature_defaut = "fixe"
         elif n.startswith("781"):
-            sig_solde = "Resultat d exploitation"
+            sig_solde = "Resultat d'exploitation"
             sig_signe = 1
             cr_rubrique = "Reprises exploitation"
             nature_defaut = "fixe"
@@ -345,12 +345,12 @@ def get_mapping(num):
             cr_rubrique = "Reprises exceptionnel"
             nature_defaut = "fixe"
         elif n.startswith("78"):
-            sig_solde = "Resultat d exploitation"
+            sig_solde = "Resultat d'exploitation"
             sig_signe = 1
             cr_rubrique = "Reprises"
             nature_defaut = "fixe"
         elif n.startswith("791"):
-            sig_solde = "Resultat d exploitation"
+            sig_solde = "Resultat d'exploitation"
             sig_signe = 1
             cr_rubrique = "Transferts de charges exploitation"
             nature_defaut = "fixe"
@@ -365,7 +365,7 @@ def get_mapping(num):
             cr_rubrique = "Transferts de charges exceptionnelles"
             nature_defaut = "fixe"
         elif n.startswith("79"):
-            sig_solde = "Resultat d exploitation"
+            sig_solde = "Resultat d'exploitation"
             sig_signe = 1
             cr_rubrique = "Transferts de charges"
             nature_defaut = "fixe"
