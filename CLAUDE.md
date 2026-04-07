@@ -132,28 +132,28 @@ Le mapping Python dans `generate-pcg-seed.py` est la **source de vérité unique
 Exécuter les scripts dans l'ordre numérique par dossier :
 ```bash
 # 1. Schéma
-psql $SUPABASE_DB_URL -f sql/01-schema/001-entite.sql
-psql $SUPABASE_DB_URL -f sql/01-schema/002-exercice.sql
-psql $SUPABASE_DB_URL -f sql/01-schema/003-pcg-analytique.sql
-psql $SUPABASE_DB_URL -f sql/01-schema/004-compte-resolution.sql
-psql $SUPABASE_DB_URL -f sql/01-schema/005-fec-import.sql
-psql $SUPABASE_DB_URL -f sql/01-schema/006-fec-ecriture.sql
+psql $HMA_DB_URL -f sql/01-schema/001-entite.sql
+psql $HMA_DB_URL -f sql/01-schema/002-exercice.sql
+psql $HMA_DB_URL -f sql/01-schema/003-pcg-analytique.sql
+psql $HMA_DB_URL -f sql/01-schema/004-compte-resolution.sql
+psql $HMA_DB_URL -f sql/01-schema/005-fec-import.sql
+psql $HMA_DB_URL -f sql/01-schema/006-fec-ecriture.sql
 
 # 2. Données de référence
-psql $SUPABASE_DB_URL -f sql/02-data/001-pcg-analytique-seed.sql
+psql $HMA_DB_URL -f sql/02-data/001-pcg-analytique-seed.sql
 
 # 3. Fonctions (avant les vues qui en dépendent)
-psql $SUPABASE_DB_URL -f sql/04-functions/resolve-compte.sql
-psql $SUPABASE_DB_URL -f sql/04-functions/refresh-views.sql
+psql $HMA_DB_URL -f sql/04-functions/resolve-compte.sql
+psql $HMA_DB_URL -f sql/04-functions/refresh-views.sql
 
 # 4. Vues matérialisées (ordre de dépendance)
-psql $SUPABASE_DB_URL -f sql/03-views/001-mv-balance-generale.sql
-psql $SUPABASE_DB_URL -f sql/03-views/002-mv-bilan.sql
-psql $SUPABASE_DB_URL -f sql/03-views/003-mv-bilan-fonctionnel.sql
-psql $SUPABASE_DB_URL -f sql/03-views/004-mv-compte-resultat.sql
-psql $SUPABASE_DB_URL -f sql/03-views/005-mv-resultat-differentiel.sql
-psql $SUPABASE_DB_URL -f sql/03-views/006-mv-sig.sql
-psql $SUPABASE_DB_URL -f sql/03-views/007-v-controles-coherence.sql
+psql $HMA_DB_URL -f sql/03-views/001-mv-balance-generale.sql
+psql $HMA_DB_URL -f sql/03-views/002-mv-bilan.sql
+psql $HMA_DB_URL -f sql/03-views/003-mv-bilan-fonctionnel.sql
+psql $HMA_DB_URL -f sql/03-views/004-mv-compte-resultat.sql
+psql $HMA_DB_URL -f sql/03-views/005-mv-resultat-differentiel.sql
+psql $HMA_DB_URL -f sql/03-views/006-mv-sig.sql
+psql $HMA_DB_URL -f sql/03-views/007-v-controles-coherence.sql
 ```
 
 On peut aussi exécuter les migrations via le MCP Supabase (`apply_migration`, `execute_sql`).

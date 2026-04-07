@@ -33,10 +33,11 @@
 | Odoo 18 | ERP / CRM open-source | [odoo.hma.business](https://odoo.hma.business) | ✅ Actif | Python / Docker |
 | Apache Superset | BI / Data Visualization | [superset.hma.business](https://superset.hma.business) | ✅ Actif | Python / Docker |
 | n8n | Workflow Automation | [n8n.hma.business](https://n8n.hma.business) | ✅ Actif | Node.js / Docker |
-| Metabase | BI / Analytics | [metabase.hma.business](http://metabase.hma.business) | ✅ Actif | Java / Docker |
+| ~~Metabase~~ | ~~BI / Analytics~~ | ~~metabase.hma.business~~ | 🗑️ Supprimé | Redondant avec Apache Superset |
 | Appsmith | Low-code app builder / saisie / mapping | [appsmith.hma.business](https://appsmith.hma.business) | ✅ Actif | Node.js / Docker — remplace Budibase & NocoDB |
-| Supabase | BaaS (Auth, DB, Storage, Realtime) | [supabase.hma.business](https://supabase.hma.business) | ✅ Actif | Self-hosted — PostgreSQL + Kong + Studio + Auth + Storage |
-| Teable | Interface tableur / No-code | [teable.hma.business](https://teable.hma.business) | ✅ Actif | Node.js / Docker — PostgreSQL natif |
+| pgAdmin 4 | Administration PostgreSQL | [pgadmin.hma.business](https://pgadmin.hma.business) | ✅ Actif | Python / Docker |
+| ~~Supabase~~ | ~~BaaS (Auth, DB, Storage, Realtime)~~ | ~~supabase.hma.business~~ | 🗑️ Supprimé | Remplacé par PostgreSQL standalone |
+| ~~Teable~~ | ~~Interface tableur / No-code~~ | ~~teable.hma.business~~ | 🗑️ Supprimé | Redondant — exploration via Superset SQL Lab |
 | ~~NocoDB~~ | ~~Interface tableur~~ | ~~nocodb.hma.business~~ | 🗑️ Supprimé | Remplacé par Appsmith |
 | ~~Budibase~~ | ~~Low-code platform~~ | ~~budibase.hma.business~~ | 🗑️ Supprimé | Désinstallé — CouchDB en crash loop |
 
@@ -49,9 +50,10 @@
 | odoo-db | PostgreSQL 16 | Odoo ERP | hma-apps | ✅ Actif | — | Base dédiée Odoo |
 | superset-db | PostgreSQL 16 | Apache Superset | hma-apps | ✅ Actif | — | Base dédiée Superset |
 | n8n-db | PostgreSQL 16 | n8n | hma-apps | ✅ Actif | — | Base dédiée n8n |
-| metabase-db | PostgreSQL 16 Alpine | Metabase | metabase_hma | ✅ Actif | — | Base dédiée Metabase |
-| supabase-cloud | PostgreSQL 17 | Pennylane ETL (backup) | Supabase Cloud (eu-west-3) | ✅ Actif | Supabase auto | `db.uhuvuhyszrudzgcefolo.supabase.co` |
-| supabase-db | PostgreSQL 15 | Supabase self-hosted | hma-apps | ✅ Actif | — | Base dédiée Supabase self-hosted |
+| ~~metabase-db~~ | ~~PostgreSQL 16 Alpine~~ | ~~Metabase~~ | ~~metabase_hma~~ | 🗑️ Supprimé | — | Supprimé avec Metabase |
+| hma-db | PostgreSQL 16 | FEC / Vues matérialisées / Agents | hma-apps | ✅ Actif | — | Remplace Supabase self-hosted — base métier principale |
+| ~~supabase-cloud~~ | ~~PostgreSQL 17~~ | ~~Pennylane ETL (backup)~~ | ~~Supabase Cloud (eu-west-3)~~ | ⏸️ Suspendu | — | `db.uhuvuhyszrudzgcefolo.supabase.co` — à confirmer si encore utilisé |
+| ~~supabase-db~~ | ~~PostgreSQL 15~~ | ~~Supabase self-hosted~~ | ~~hma-apps~~ | 🗑️ Supprimé | — | Remplacé par hma-db |
 
 ---
 
@@ -68,7 +70,7 @@
 | Projet Coolify | Rôle | Services |
 |---|---|---|
 | `hma-monitoring` | Outils internes / infra | Uptime Kuma, Vaultwarden |
-| `hma-apps` | Services métier | Odoo 18 + PostgreSQL, Apache Superset + PostgreSQL + Redis, n8n + PostgreSQL, Metabase + PostgreSQL, Appsmith |
+| `hma-apps` | Services métier | Odoo 18 + PostgreSQL, Apache Superset + PostgreSQL + Redis, n8n + PostgreSQL, Appsmith, PostgreSQL (hma-db) |
 
 > **Convention** : tout nouveau service métier est déployé dans le projet `hma-apps`.
 
@@ -106,7 +108,11 @@ Copier-coller ce bloc dans la section appropriée lors de l'ajout d'un nouveau s
 | 2026-04 | NocoDB | Supprimé de Coolify | Remplacé par Appsmith |
 | 2026-04 | Appsmith | Déployé via Coolify | `appsmith.hma.business` — low-code app builder, saisie, mapping |
 | 2026-04 | Supabase | Déployé via Coolify (self-hosted) | `supabase.hma.business` — BaaS complet (Auth, Storage, Realtime, Edge Functions, PostgreSQL) |
+| 2026-04 | Metabase | Supprimé de Coolify | Redondant avec Apache Superset — libère RAM + PostgreSQL sur le VPS |
+| 2026-04 | Teable | Supprimé de Coolify | Redondant — exploration via Superset SQL Lab |
+| 2026-04 | Supabase | Supprimé de Coolify | Remplacé par PostgreSQL standalone (hma-db) — plus léger, pas besoin du BaaS complet |
+| 2026-04 | pgAdmin 4 | Déployé via Coolify | `pgadmin.hma.business` — administration PostgreSQL HMA |
 
 ---
 
-*Dernière mise à jour : Mars 2026 — HMA* · Coolify ✅ `coolify.hma.business`
+*Dernière mise à jour : Avril 2026 — HMA* · Coolify ✅ `coolify.hma.business`

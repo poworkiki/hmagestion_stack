@@ -1,5 +1,5 @@
 """
-Sync Pennylane -> Supabase (4 structures FEC)
+Sync Pennylane -> PostgreSQL HMA (4 structures FEC)
 
 ETL incremental : fetch /ledger_entry_lines, insert via staging, upsert, resolve pcg.
 Premier run = full fetch. Runs suivants = delta via updated_since.
@@ -9,15 +9,14 @@ Usage:
     python3 scripts/sync-pennylane.py --structure HMA    # Sync une seule structure
     python3 scripts/sync-pennylane.py --full             # Force full fetch (pas de delta)
 
-Requires: VAULTWARDEN_URL, VAULTWARDEN_CLIENT_ID, VAULTWARDEN_CLIENT_SECRET in .env
-          Supabase password in Vaultwarden ("Supabase Cloud" entry)
+Requires: VAULTWARDEN_URL, VAULTWARDEN_EMAIL, VAULTWARDEN_MASTER_PASSWORD in .env
+          PostgreSQL password in Vaultwarden ("PostgreSQL HMA (standalone)" entry)
 """
 import json, hashlib, subprocess, os, sys, time, argparse
 from datetime import datetime
 import pg8000
 
 # === Configuration ===
-SUPABASE_PROJECT_ID = 'uhuvuhyszrudzgcefolo'
 PENNYLANE_BASE_URL = 'https://app.pennylane.com/api/external/v2'
 PAUSE_BETWEEN_STRUCTURES = 5   # secondes entre chaque structure
 PAUSE_ON_429 = 30              # secondes d'attente sur rate limit
@@ -42,24 +41,21 @@ def load_env():
     return env
 
 
-def get_supabase_conn():
-    """Connexion directe a Supabase via le pooler (IPv4)."""
-    env = load_env()
-    vw_secrets = vw_get_secrets(env)
+def get_db_conn(secrets):
+    """Connexion a PostgreSQL HMA standalone."""
     conn = pg8000.connect(
-        host='aws-1-eu-west-3.pooler.supabase.com',
-        port=5432,
+        host=secrets['db_host'],
+        port=int(secrets['db_port']),
         database='postgres',
-        user='postgres.uhuvuhyszrudzgcefolo',
-        password=vw_secrets['supabase_pw'],
-        ssl_context=True
+        user='postgres',
+        password=secrets['db_pw'],
     )
     conn.autocommit = True
     return conn
 
 
-def supabase_exec(conn, sql, params=None):
-    """Execute SQL sur Supabase."""
+def db_exec(conn, sql, params=None):
+    """Execute SQL sur PostgreSQL HMA."""
     cursor = conn.cursor()
     if params:
         cursor.execute(sql, params)
@@ -72,37 +68,48 @@ def supabase_exec(conn, sql, params=None):
 
 
 def vw_get_secrets(env):
-    """Auth Vaultwarden et recupere tous les secrets necessaires (Pennylane + Supabase)."""
-    vw_url = env['VAULTWARDEN_URL']
-    hostname = subprocess.run(['hostname'], capture_output=True, text=True).stdout.strip()
-    device_id = 'hma-cli-' + hashlib.md5(hostname.encode()).hexdigest()
+    """Recupere les secrets via vw-crypto.py (dechiffrement client-side)."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, script_dir)
+    from importlib import import_module
+    # Import vw-crypto via importlib (tiret dans le nom)
+    import importlib.util
+    spec = importlib.util.spec_from_file_location('vw_crypto', os.path.join(script_dir, 'vw-crypto.py'))
+    vw_crypto = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(vw_crypto)
 
-    token_resp = subprocess.run(['curl', '-s', '-X', 'POST',
-        f'{vw_url}/identity/connect/token',
-        '-H', 'Content-Type: application/x-www-form-urlencoded',
-        '-d', 'grant_type=client_credentials',
-        '-d', f'client_id={env["VAULTWARDEN_CLIENT_ID"]}',
-        '-d', f'client_secret={env["VAULTWARDEN_CLIENT_SECRET"]}',
-        '-d', 'scope=api',
-        '-d', f'deviceIdentifier={device_id}',
-        '-d', 'deviceType=14',
-        '-d', 'deviceName=HMA-CLI'], capture_output=True, text=True)
-    vw_token = json.loads(token_resp.stdout)['access_token']
+    session = vw_crypto.VwSession(
+        base_url=env['VAULTWARDEN_URL'],
+        email=env.get('VAULTWARDEN_EMAIL', 'poworkiki@gmail.com'),
+        master_password=env['VAULTWARDEN_MASTER_PASSWORD'],
+    )
+    session.login()
+    ciphers = session.fetch_ciphers(vw_crypto.ORG_ID)
 
-    ciphers = json.loads(subprocess.run(['curl', '-s',
-        f'{vw_url}/api/ciphers',
-        '-H', f'Authorization: Bearer {vw_token}'], capture_output=True, text=True).stdout)
+    secrets = {'tokens': {}, 'db_pw': '', 'db_host': '', 'db_port': '5432'}
+    for c in ciphers:
+        d = session.decrypt_cipher(c)
+        name = d['name']
+        pw = d['password']
 
-    secrets = {'tokens': {}, 'supabase_pw': ''}
-    for item in ciphers.get('data', []):
-        name = item.get('name', '')
-        pw = (item.get('login') or {}).get('password', '') or ''
+        # Tokens Pennylane
         if 'pennylane api' in name.lower() and pw and 'sandbox' not in name.lower():
             for code in ['HMA', 'STIVMAT', 'STA', 'ETPA']:
                 if code in name:
                     secrets['tokens'][code] = pw
-        if 'supabase' in name.lower() and 'agent' in name.lower() and pw:
-            secrets['supabase_pw'] = pw
+
+        # PostgreSQL HMA standalone
+        if 'postgresql hma' in name.lower() and 'standalone' in name.lower() and pw:
+            secrets['db_pw'] = pw
+            # Extraire host:port depuis l'URI (postgresql://host:port/db)
+            uri = d['uris'][0] if d['uris'] else ''
+            if '://' in uri:
+                host_part = uri.split('://')[1].split('/')[0]
+                if ':' in host_part:
+                    secrets['db_host'], secrets['db_port'] = host_part.rsplit(':', 1)
+                else:
+                    secrets['db_host'] = host_part
+
     return secrets
 
 
@@ -165,11 +172,8 @@ def pennylane_fetch_all(token, endpoint, params=None):
     return all_items
 
 
-def supabase_sql(query):
-    """Execute SQL via MCP Supabase (subprocess vers Claude Code MCP)."""
-    # On utilise curl direct vers l'API Supabase REST pour eviter la dependance MCP
-    # Mais pour les requetes complexes, on passe par le script
-    # Pour l'instant, on print le SQL et on le fait via MCP dans le caller
+def db_sql(query):
+    """Retourne le SQL brut (pour usage via fichier ou CLI)."""
     return query
 
 
@@ -332,8 +336,8 @@ END $$;""")
     return '\n'.join(statements)
 
 
-def load_to_supabase(conn, code, entries):
-    """Charge les ecritures dans Supabase : staging -> upsert -> resolve -> stats."""
+def load_to_db(conn, code, entries):
+    """Charge les ecritures dans PostgreSQL HMA : staging -> upsert -> resolve -> stats."""
     cursor = conn.cursor()
 
     # 1. Resolve IDs
@@ -417,7 +421,7 @@ def load_to_supabase(conn, code, entries):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Sync Pennylane -> Supabase')
+    parser = argparse.ArgumentParser(description='Sync Pennylane -> PostgreSQL HMA')
     parser.add_argument('--structure', '-s', help='Sync une seule structure (HMA, STIVMAT, STA, ETPA)')
     parser.add_argument('--full', action='store_true', help='Force full fetch (pas de delta)')
     parser.add_argument('--dry-run', action='store_true', help='Genere le SQL sans executer')

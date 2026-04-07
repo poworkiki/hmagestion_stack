@@ -3,19 +3,19 @@
 ## Prérequis
 
 - Accès SSH au VPS HMA (187.124.150.82)
-- Supabase self-hosted opérationnel (supabase.hma.business)
+- PostgreSQL HMA standalone opérationnel (credentials dans Vaultwarden)
 - n8n opérationnel (n8n.hma.business)
 - Tokens Pennylane dans Vaultwarden (4 structures)
 
 ## Ordre d'exécution
 
-### 1. Schéma SQL (sur Supabase)
+### 1. Schéma SQL (sur PostgreSQL HMA)
 
-Exécuter les fichiers SQL dans l'ordre numérique via l'éditeur SQL Supabase ou `psql` :
+Exécuter les fichiers SQL dans l'ordre numérique via `psql` :
 
 ```bash
-# Depuis le VPS, se connecter à PostgreSQL Supabase
-psql $SUPABASE_DB_URL
+# Se connecter à PostgreSQL HMA standalone
+psql $HMA_DB_URL
 
 # Exécuter dans l'ordre
 \i sql/01-schema/001-entite.sql
@@ -46,9 +46,9 @@ psql $SUPABASE_DB_URL
 
 1. Importer `n8n/workflow-sync-pennylane.json` dans n8n
 2. Configurer les credentials Pennylane (4 tokens depuis Vaultwarden)
-3. Configurer la connexion PostgreSQL Supabase
+3. Configurer la connexion PostgreSQL HMA
 4. Exécuter manuellement une première fois sur une structure (ex: HMA)
-5. Vérifier dans Supabase que les écritures sont insérées
+5. Vérifier dans PostgreSQL que les écritures sont insérées
 6. Activer le trigger automatique (cron ou webhook)
 
 ### 3. Validation
