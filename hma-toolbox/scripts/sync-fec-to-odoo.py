@@ -119,38 +119,86 @@ def load_odoo_accounts(models, db, uid, pwd):
     """Charge le mapping code -> id du plan comptable Odoo."""
     accounts = models.execute_kw(db, uid, pwd,
         'account.account', 'search_read', [[]],
-        {'fields': ['code', 'id']}
+        {'fields': ['code', 'id', 'account_type', 'name']}
     )
-    # Index par code exact + par prefixe (6 premiers chiffres)
     by_code = {}
     for a in accounts:
-        by_code[a['code']] = a['id']
-        # Index aussi sans zeros terminaux
-        stripped = a['code'].rstrip('0')
-        if stripped and stripped not in by_code:
-            by_code[stripped] = a['id']
+        by_code[a['code']] = a
     return by_code
 
 
-def resolve_account(compte_num, accounts_map):
-    """Resoud un numero de compte FEC vers un account.account Odoo."""
+def find_parent_account(compte_num, accounts_map):
+    """Trouve le compte parent le plus proche dans Odoo (par prefixe decroissant)."""
+    # Extraire la partie numerique du debut (pour 401CHRONOPOST -> 401)
+    num_prefix = ''
+    for c in compte_num:
+        if c.isdigit():
+            num_prefix += c
+        else:
+            break
+
+    # Essai prefixes decroissants sur la partie numerique
+    for length in range(len(num_prefix), 2, -1):
+        prefix = num_prefix[:length]
+        for code, acct in accounts_map.items():
+            if code.startswith(prefix):
+                return acct
+
+    # Fallback : classe comptable (1er chiffre)
+    classe = compte_num[0] if compte_num else '6'
+    for code, acct in accounts_map.items():
+        if code.startswith(classe):
+            return acct
+
+    return None
+
+
+def resolve_or_create_account(compte_num, compte_lib, accounts_map, models, db, uid, pwd):
+    """Resoud un compte FEC vers Odoo. Si inexistant, le cree automatiquement.
+    Pennylane = source de verite : on reproduit exactement les memes comptes."""
     # Essai exact
     if compte_num in accounts_map:
-        return accounts_map[compte_num]
-    # Essai 6 premiers chiffres
-    code6 = compte_num[:6]
-    if code6 in accounts_map:
-        return accounts_map[code6]
-    # Essai prefixes decroissants
-    for length in range(len(compte_num), 2, -1):
-        prefix = compte_num[:length]
-        if prefix in accounts_map:
-            return accounts_map[prefix]
-    # Essai sans zeros terminaux
-    stripped = compte_num.rstrip('0')
-    if stripped in accounts_map:
-        return accounts_map[stripped]
-    return None
+        return accounts_map[compte_num]['id']
+
+    # Compte inexistant -> on le cree dans Odoo
+    parent = find_parent_account(compte_num, accounts_map)
+    if not parent:
+        log(f'    ERREUR: aucun compte parent trouve pour {compte_num}')
+        return None
+
+    # Determiner le libelle
+    name = compte_lib or compte_num
+    # Pour les auxiliaires textuels (401CHRONOPOST), nettoyer le nom
+    if any(c.isalpha() for c in compte_num[3:]):
+        # Extraire le nom du tiers depuis le code (401CHRONOPOSTGF -> Chronopost GF)
+        tiers_part = compte_num[3:]  # Enlever le prefixe 401/411
+        # Inserer des espaces avant les majuscules
+        cleaned = ''
+        for i, c in enumerate(tiers_part):
+            if c.isupper() and i > 0 and tiers_part[i-1].islower():
+                cleaned += ' '
+            cleaned += c
+        name = cleaned if cleaned else tiers_part
+
+    try:
+        new_id = models.execute_kw(db, uid, pwd,
+            'account.account', 'create', [{
+                'code': compte_num,
+                'name': name,
+                'account_type': parent['account_type'],
+            }]
+        )
+        log(f'    AUTO-CREATE compte {compte_num} "{name}" (type={parent["account_type"]})')
+        accounts_map[compte_num] = {
+            'id': new_id,
+            'code': compte_num,
+            'name': name,
+            'account_type': parent['account_type'],
+        }
+        return new_id
+    except Exception as e:
+        log(f'    ERREUR creation compte {compte_num}: {str(e)[:120]}')
+        return None
 
 
 def load_existing_refs(models, db, uid, pwd, structure_code):
@@ -221,7 +269,7 @@ def create_odoo_moves(models, db, uid, pwd, moves_grouped, structure_code,
     created = 0
     skipped = 0
     errors = 0
-    missing_accounts = set()
+    accounts_created = 0
 
     for (ecriture_num, journal_code, date_str), lines in moves_grouped.items():
         # Deduplication : verifier si deja importe
@@ -244,11 +292,34 @@ def create_odoo_moves(models, db, uid, pwd, moves_grouped, structure_code,
         move_lines = []
         has_error = False
         for line in lines:
-            account_id = resolve_account(line['compte_num'], accounts_map)
-            if not account_id:
-                missing_accounts.add(line['compte_num'])
-                has_error = True
-                continue
+            compte_num = line['compte_num']
+            compte_lib = line['compte_lib']
+
+            already_existed = compte_num in accounts_map
+
+            if dry_run:
+                # En dry-run, on verifie sans creer
+                if not already_existed:
+                    parent = find_parent_account(compte_num, accounts_map)
+                    if parent:
+                        account_id = parent['id']
+                        log(f'    [DRY] Auto-create {compte_num} (parent={parent["code"]})')
+                        accounts_created += 1
+                    else:
+                        has_error = True
+                        continue
+                else:
+                    account_id = accounts_map[compte_num]['id']
+            else:
+                # En reel, on cree le compte si manquant
+                account_id = resolve_or_create_account(
+                    compte_num, compte_lib, accounts_map, models, db, uid, pwd
+                )
+                if not account_id:
+                    has_error = True
+                    continue
+                if not already_existed:
+                    accounts_created += 1
 
             debit = float(line['debit'] or 0)
             credit = float(line['credit'] or 0)
@@ -302,7 +373,7 @@ def create_odoo_moves(models, db, uid, pwd, moves_grouped, structure_code,
             log(f'  ERR ecriture {ecriture_num}: {err}')
             errors += 1
 
-    return created, skipped, errors, missing_accounts
+    return created, skipped, errors, accounts_created
 
 
 def sync_structure(structure_code, pg_conn, odoo_conn, dry_run=False, limit=None):
@@ -335,20 +406,14 @@ def sync_structure(structure_code, pg_conn, odoo_conn, dry_run=False, limit=None
     log(f'  {len(moves_grouped)} pieces comptables a traiter')
 
     # 5. Creer dans Odoo
-    created, skipped, errors, missing = create_odoo_moves(
+    created, skipped, errors, accounts_created = create_odoo_moves(
         models, db, uid, pwd, moves_grouped, structure_code,
         journals_map, accounts_map, existing_refs, dry_run=dry_run
     )
 
     log(f'  Resultat {structure_code}: '
-        f'{created} creees, {skipped} existantes, {errors} erreurs')
-
-    if missing:
-        log(f'  COMPTES MANQUANTS dans Odoo ({len(missing)}):')
-        for compte in sorted(missing)[:20]:
-            log(f'    {compte}')
-        if len(missing) > 20:
-            log(f'    ... et {len(missing) - 20} autres')
+        f'{created} ecritures creees, {skipped} existantes, {errors} erreurs, '
+        f'{accounts_created} comptes auto-crees')
 
 
 def main():
