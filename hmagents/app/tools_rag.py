@@ -48,11 +48,15 @@ def _make_query_engine(collection_name: str):
     )
 
 
-# ── QueryEngines (initialisés une fois) ─────────────────────────────
-_qe_manuels = _make_query_engine(settings.kb_manuels)
-_qe_reglementation = _make_query_engine(settings.kb_reglementation)
-_qe_conventions = _make_query_engine(settings.kb_conventions)
-_qe_pcg = _make_query_engine(settings.kb_pcg_analytique)
+# ── QueryEngines (lazy init — évite crash si Qdrant pas joignable au démarrage)
+_qe_cache: dict = {}
+
+
+def _get_qe(collection: str):
+    """Retourne un QueryEngine avec initialisation lazy."""
+    if collection not in _qe_cache:
+        _qe_cache[collection] = _make_query_engine(collection)
+    return _qe_cache[collection]
 
 
 # ── 4 outils KB wrappés pour CrewAI ─────────────────────────────────
@@ -62,7 +66,7 @@ def tool_kb_manuels(query: str) -> str:
     """Recherche dans les manuels DCG/DSCG (comptabilité, fiscalité, droit, finance).
     18 132 documents. Utiliser pour les questions théoriques et normatives."""
     try:
-        return str(_qe_manuels.query(query))
+        return str(_get_qe(settings.kb_manuels).query(query))
     except Exception as e:
         return f"Erreur kb_manuels : {e}"
 
@@ -72,7 +76,7 @@ def tool_kb_reglementation(query: str) -> str:
     """Recherche dans les textes de loi : Girardin, LODEOM, dispositifs ultramarins.
     Utiliser pour les questions fiscales et réglementaires spécifiques Guyane/DOM."""
     try:
-        return str(_qe_reglementation.query(query))
+        return str(_get_qe(settings.kb_reglementation).query(query))
     except Exception as e:
         return f"Erreur kb_reglementation : {e}"
 
@@ -82,7 +86,7 @@ def tool_kb_conventions(query: str) -> str:
     """Recherche dans les conventions collectives Guyane (Transport, Agroalimentaire).
     Utiliser pour les questions de paie, grilles salariales, indemnités."""
     try:
-        return str(_qe_conventions.query(query))
+        return str(_get_qe(settings.kb_conventions).query(query))
     except Exception as e:
         return f"Erreur kb_conventions : {e}"
 
@@ -92,7 +96,7 @@ def tool_kb_pcg(query: str) -> str:
     """Recherche dans le mapping des 1 412 comptes PCG avec catégories analytiques
     (SIG, CR, Bilan, BF, V/F). Utiliser pour identifier le rôle d'un compte."""
     try:
-        return str(_qe_pcg.query(query))
+        return str(_get_qe(settings.kb_pcg_analytique).query(query))
     except Exception as e:
         return f"Erreur kb_pcg : {e}"
 

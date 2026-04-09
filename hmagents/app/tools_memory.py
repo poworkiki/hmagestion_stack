@@ -32,14 +32,21 @@ mem0_config = {
     },
 }
 
-mem0_memory = Memory.from_config(mem0_config)
+_mem0_instance = None
+
+
+def _get_mem0():
+    global _mem0_instance
+    if _mem0_instance is None:
+        _mem0_instance = Memory.from_config(mem0_config)
+    return _mem0_instance
 
 
 # ── Fonctions utilitaires ────────────────────────────────────────────
 
 def memorize(agent_id: str, content: str, metadata: dict | None = None):
     """Stocker un output d'agent en mémoire long terme."""
-    mem0_memory.add(
+    _get_mem0().add(
         content,
         user_id=agent_id,
         metadata=metadata or {},
@@ -48,7 +55,7 @@ def memorize(agent_id: str, content: str, metadata: dict | None = None):
 
 def recall(agent_id: str, query: str, limit: int = 5) -> list[dict]:
     """Retrouver les souvenirs pertinents d'un agent."""
-    results = mem0_memory.search(query, user_id=agent_id, limit=limit)
+    results = _get_mem0().search(query, user_id=agent_id, limit=limit)
     return results.get("results", [])
 
 
