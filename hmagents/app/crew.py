@@ -5,6 +5,7 @@ from crewai import Agent, Crew, Process, Task, LLM
 from app.config import settings
 from app.tools_rag import tool_kb_manuels, tool_kb_reglementation, tool_kb_conventions, tool_kb_pcg
 from app.tools_sql import (
+    tool_sql_grand_livre, tool_sql_balance_generale,
     tool_sql_balance, tool_sql_sig, tool_sql_bilan,
     tool_sql_bilan_fonctionnel, tool_sql_cr, tool_sql_crd, tool_sql_fec,
 )
@@ -81,7 +82,7 @@ expert_comptable = Agent(
     llm=llm_reasoning,
     tools=[
         tool_kb_manuels, tool_kb_reglementation, tool_kb_conventions, tool_kb_pcg,
-        tool_sql_balance, tool_sql_fec, tool_sql_sig,
+        tool_sql_grand_livre, tool_sql_balance_generale, tool_sql_balance, tool_sql_fec, tool_sql_sig,
         tool_pennylane_trial_balance, tool_pennylane_ledger_entries, tool_pennylane_ledger_accounts,
         tool_mem0_expert_comptable,
     ],
@@ -138,6 +139,7 @@ analyste_financier = Agent(
     ),
     llm=llm_reasoning,
     tools=[
+        tool_sql_grand_livre, tool_sql_balance_generale,
         tool_sql_sig, tool_sql_bilan, tool_sql_bilan_fonctionnel,
         tool_sql_cr, tool_sql_crd, tool_sql_balance,
         tool_kb_manuels,
@@ -169,6 +171,7 @@ reviseur = Agent(
     ),
     llm=llm_reasoning,
     tools=[
+        tool_sql_grand_livre, tool_sql_balance_generale,
         tool_sql_balance, tool_sql_sig, tool_sql_fec,
         tool_kb_manuels, tool_kb_reglementation, tool_kb_conventions, tool_kb_pcg,
         tool_pennylane_trial_balance,

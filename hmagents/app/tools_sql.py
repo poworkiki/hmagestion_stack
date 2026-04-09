@@ -30,14 +30,39 @@ def _get_sql_qe(name: str, tables: list[str]):
     return _sql_qe_cache[name]
 
 
-# ── 7 outils SQL wrappés pour CrewAI ────────────────────────────────
+# ── 9 outils SQL wrappés pour CrewAI ────────────────────────────────
+
+@tool("sql_grand_livre")
+def tool_sql_grand_livre(query: str) -> str:
+    """Requête SQL sur le Grand Livre (table grand_livre).
+    25 800+ écritures comptables brutes Pennylane enrichies PCG + calendrier.
+    Colonnes : entite_nom, annee, trimestre, mois, ecriture_date, journal_code,
+    compte_numero, compte_libelle, classe, ecriture_lib, debit, credit, solde,
+    sig_solde, cr_rubrique, bilan_poste, crd_categorie, is_a_nouveau."""
+    try:
+        return str(_get_sql_qe("grand_livre", ["grand_livre", "entite", "exercice"]).query(query))
+    except Exception as e:
+        return f"Erreur SQL grand_livre : {e}"
+
+
+@tool("sql_balance_generale")
+def tool_sql_balance_generale(query: str) -> str:
+    """Requête SQL sur la Balance Générale (vue matérialisée balance_generale).
+    Agrégation par compte/mois : total_debit, total_credit, solde.
+    Inclut mapping PCG : sig_solde, cr_rubrique, bilan_poste, crd_categorie.
+    Aussi disponible : v_bg_display (solde débiteur/créditeur séparés, par année)."""
+    try:
+        return str(_get_sql_qe("balance_generale", ["balance_generale", "v_bg_display", "entite", "exercice"]).query(query))
+    except Exception as e:
+        return f"Erreur SQL balance_generale : {e}"
+
 
 @tool("sql_balance")
 def tool_sql_balance(query: str) -> str:
-    """Requête SQL sur la balance générale et balance auxiliaire.
-    Soldes par compte, entité, exercice et mois."""
+    """Requête SQL sur la balance auxiliaire.
+    Soldes par tiers (fournisseurs 401xxx, clients 411xxx)."""
     try:
-        return str(_get_sql_qe("balance", ["mv_balance_generale", "v_balance_auxiliaire", "entite", "exercice"]).query(query))
+        return str(_get_sql_qe("balance", ["balance_generale", "v_balance_auxiliaire", "entite", "exercice"]).query(query))
     except Exception as e:
         return f"Erreur SQL balance : {e}"
 
@@ -94,15 +119,16 @@ def tool_sql_crd(query: str) -> str:
 
 @tool("sql_ecritures_fec")
 def tool_sql_fec(query: str) -> str:
-    """Requête SQL sur les écritures comptables FEC et le grand livre.
-    25 000+ écritures normalisées. Colonnes : journal_code, ecriture_num, etc."""
+    """Requête SQL sur les écritures comptables FEC (table legacy).
+    Utiliser sql_grand_livre de préférence pour les nouvelles requêtes."""
     try:
-        return str(_get_sql_qe("fec", ["fec_ecriture", "v_grand_livre", "entite", "exercice", "pcg_analytique"]).query(query))
+        return str(_get_sql_qe("fec", ["fec_ecriture", "entite", "exercice", "pcg_analytique"]).query(query))
     except Exception as e:
         return f"Erreur SQL fec : {e}"
 
 
 ALL_SQL_TOOLS = [
+    tool_sql_grand_livre, tool_sql_balance_generale,
     tool_sql_balance, tool_sql_sig, tool_sql_bilan,
     tool_sql_bilan_fonctionnel, tool_sql_cr, tool_sql_crd, tool_sql_fec,
 ]
