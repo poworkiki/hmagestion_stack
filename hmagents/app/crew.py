@@ -19,19 +19,18 @@ from app.tools_pennylane import (
 
 # ── LLM ──────────────────────────────────────────────────────────────
 
-claude = LLM(
-    model=settings.anthropic_model,
-    api_key=settings.anthropic_api_key,
+llm_standard = LLM(
+    model="openai/gpt-4o",
+    api_key=settings.openai_api_key,
     max_tokens=8192,
     temperature=0.3,
 )
 
-claude_thinking = LLM(
-    model=settings.anthropic_model_thinking,
-    api_key=settings.anthropic_api_key,
+llm_reasoning = LLM(
+    model="openai/gpt-4o",
+    api_key=settings.openai_api_key,
     max_tokens=16384,
-    thinking={"type": "enabled", "budget_tokens": 8000},
-    temperature=1.0,
+    temperature=0.3,
 )
 
 
@@ -54,7 +53,7 @@ directeur_mission = Agent(
         "et synthétises. Les 4 structures ont des exercices calés sur l'année civile. "
         "Tu réponds TOUJOURS en français."
     ),
-    llm=claude,
+    llm=llm_standard,
     allow_delegation=True,
     verbose=settings.crew_verbose,
 )
@@ -79,7 +78,7 @@ expert_comptable = Agent(
         "du social juridique (qui relève du Juriste). "
         "Tu réponds TOUJOURS en français."
     ),
-    llm=claude_thinking,
+    llm=llm_reasoning,
     tools=[
         tool_kb_manuels, tool_kb_reglementation, tool_kb_conventions, tool_kb_pcg,
         tool_sql_balance, tool_sql_fec, tool_sql_sig,
@@ -109,7 +108,7 @@ juriste = Agent(
         "Tu ne traites PAS le social chiffré (paie, cotisations → Expert-Comptable). "
         "Tu réponds TOUJOURS en français."
     ),
-    llm=claude_thinking,
+    llm=llm_reasoning,
     tools=[
         tool_kb_manuels, tool_kb_reglementation, tool_kb_conventions,
         tool_mem0_juriste,
@@ -137,7 +136,7 @@ analyste_financier = Agent(
         "Tu compares les 4 structures entre elles et identifies les anomalies. "
         "Tu réponds TOUJOURS en français."
     ),
-    llm=claude_thinking,
+    llm=llm_reasoning,
     tools=[
         tool_sql_sig, tool_sql_bilan, tool_sql_bilan_fonctionnel,
         tool_sql_cr, tool_sql_crd, tool_sql_balance,
@@ -168,7 +167,7 @@ reviseur = Agent(
         "tu signales. Tu es la dernière porte avant l'utilisateur. "
         "Tu réponds TOUJOURS en français."
     ),
-    llm=claude_thinking,
+    llm=llm_reasoning,
     tools=[
         tool_sql_balance, tool_sql_sig, tool_sql_fec,
         tool_kb_manuels, tool_kb_reglementation, tool_kb_conventions, tool_kb_pcg,
@@ -177,20 +176,6 @@ reviseur = Agent(
     ],
     allow_delegation=False,
     verbose=settings.crew_verbose,
-)
-
-
-# ── Crew HMAGENTS ────────────────────────────────────────────────────
-
-hmagents_crew = Crew(
-    agents=[expert_comptable, juriste, analyste_financier, reviseur],
-    manager_agent=directeur_mission,
-    process=Process.hierarchical,
-    planning=True,
-    verbose=settings.crew_verbose,
-    memory=False,  # mem0 gère la mémoire, pas CrewAI
-    respect_context_window=True,
-    max_rpm=settings.crew_max_rpm,
 )
 
 
@@ -213,10 +198,17 @@ def ask_hmagents(question: str, entite: str | None = None, exercice: str | None 
         ),
     )
 
-    result = hmagents_crew.kickoff(inputs={
-        "question": question,
-        "entite": entite,
-        "exercice": exercice,
-    })
+    # Créer un crew par requête (les tasks doivent être dans le crew)
+    crew = Crew(
+        agents=[expert_comptable, juriste, analyste_financier, reviseur],
+        tasks=[task],
+        manager_agent=directeur_mission,
+        process=Process.hierarchical,
+        verbose=settings.crew_verbose,
+        memory=False,
+        respect_context_window=True,
+        max_rpm=settings.crew_max_rpm,
+    )
 
+    result = crew.kickoff()
     return result.raw
