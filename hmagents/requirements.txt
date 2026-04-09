@@ -1,0 +1,31 @@
+# HMAGENTS — Stack multi-agents comptable
+# CrewAI + LlamaIndex + mem0 + FastAPI
+
+# === Orchestration agents ===
+crewai[tools]>=0.108
+
+# === RAG + Query Engine ===
+llama-index-core>=0.12
+llama-index-vector-stores-qdrant>=0.4
+llama-index-embeddings-openai>=0.3
+llama-index-llms-anthropic>=0.5
+
+# === Mémoire agents ===
+mem0ai>=0.1
+
+# === API HTTP ===
+fastapi>=0.115
+uvicorn[standard]>=0.34
+
+# === Base de données ===
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+
+# === Clients externes ===
+qdrant-client>=1.13
+requests>=2.32
+httpx>=0.28
+
+# === Schemas ===
+pydantic>=2.10
+pydantic-settings>=2.7

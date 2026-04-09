@@ -1,0 +1,29 @@
+services:
+  hmagents:
+    build: .
+    container_name: hmagents
+    restart: unless-stopped
+    ports:
+      - "8100:8000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - QDRANT_URL=${QDRANT_URL:-https://qdrant.hma.business}
+      - QDRANT_API_KEY=${QDRANT_API_KEY}
+      - HMA_DB_URL=${HMA_DB_URL}
+      - PENNYLANE_TOKEN_HMA=${PENNYLANE_TOKEN_HMA}
+      - PENNYLANE_TOKEN_STIVMAT=${PENNYLANE_TOKEN_STIVMAT}
+      - PENNYLANE_TOKEN_STA=${PENNYLANE_TOKEN_STA}
+      - PENNYLANE_TOKEN_ETPA=${PENNYLANE_TOKEN_ETPA}
+    networks:
+      - hma-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.hmagents.rule=Host(`agents.hma.business`)"
+      - "traefik.http.routers.hmagents.entrypoints=https"
+      - "traefik.http.routers.hmagents.tls=true"
+      - "traefik.http.services.hmagents.loadbalancer.server.port=8000"
+
+networks:
+  hma-network:
+    external: true
