@@ -209,9 +209,10 @@ def sync_structure(code, token, full_fetch=False):
         journal_id = line.get('journal', {}).get('id')
         journal = journal_map.get(journal_id, {'code': 'INCONNU', 'label': ''})
         ecriture_num = str(line.get('ledger_entry', {}).get('id', '')) if line.get('ledger_entry') else ''
+        line_id = str(line.get('id', ''))  # ID unique de la ligne (anti-doublon)
 
-        # Fingerprint MD5 de deduplication
-        hash_input = f'{code}{journal["code"]}{ecriture_num}{line.get("date", "")}{compte_num}{line.get("debit", 0)}{line.get("credit", 0)}'
+        # Fingerprint MD5 de deduplication (inclut line_id pour eviter les doublons parent/detail)
+        hash_input = f'{code}{line_id}{journal["code"]}{ecriture_num}{line.get("date", "")}{compte_num}{line.get("debit", 0)}{line.get("credit", 0)}'
         hash_md5 = hashlib.md5(hash_input.encode()).hexdigest()
 
         entries.append({

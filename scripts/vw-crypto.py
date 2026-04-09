@@ -133,6 +133,25 @@ def decrypt_aes_cbc(enc_string, enc_key, mac_key):
     return unpadder.update(padded) + unpadder.finalize()
 
 
+def encrypt_aes_cbc(plaintext_bytes, enc_key, mac_key):
+    """Chiffre en type 2 = AES-CBC-256 + HMAC-SHA256. Retourne une enc_string."""
+    iv = os.urandom(16)
+    padder = padding.PKCS7(128).padder()
+    padded = padder.update(plaintext_bytes) + padder.finalize()
+    cipher = Cipher(algorithms.AES(enc_key), modes.CBC(iv))
+    encryptor = cipher.encryptor()
+    ct = encryptor.update(padded) + encryptor.finalize()
+    mac = hmac_mod.new(mac_key, iv + ct, hashlib.sha256).digest()
+    return '2.' + base64.b64encode(iv).decode() + '|' + base64.b64encode(ct).decode() + '|' + base64.b64encode(mac).decode()
+
+
+def encrypt_enc_string(plaintext, enc_key, mac_key):
+    """Chiffre une chaîne UTF-8 en enc_string type 2."""
+    if not plaintext:
+        return None
+    return encrypt_aes_cbc(plaintext.encode('utf-8'), enc_key, mac_key)
+
+
 def decrypt_enc_string(enc_string, enc_key, mac_key):
     """Déchiffre une enc_string et retourne du texte UTF-8."""
     if not enc_string:
@@ -422,6 +441,84 @@ def cmd_export(args, env):
     sys.exit(1)
 
 
+def cmd_set(args, env):
+    """Crée ou met à jour un secret dans l'organisation."""
+    if len(args) < 3:
+        print('Usage: vw-crypto.py set <nom> <username> <password> [uri]', file=sys.stderr)
+        sys.exit(1)
+
+    name = args[0]
+    username = args[1]
+    password = args[2]
+    uri = args[3] if len(args) > 3 else ''
+
+    session = get_session(env)
+    ciphers = session.fetch_ciphers(ORG_ID)
+
+    # Clé de l'organisation
+    org_enc_key, org_mac_key = session.org_keys[ORG_ID]
+
+    # Chercher un cipher existant avec le même nom
+    existing_id = None
+    for c in ciphers:
+        d = session.decrypt_cipher(c)
+        if d['name'] == name:
+            existing_id = c['id']
+            break
+
+    # Chiffrer les champs
+    enc_name = encrypt_enc_string(name, org_enc_key, org_mac_key)
+    enc_user = encrypt_enc_string(username, org_enc_key, org_mac_key)
+    enc_pw = encrypt_enc_string(password, org_enc_key, org_mac_key)
+
+    uris_payload = []
+    if uri:
+        enc_uri = encrypt_enc_string(uri, org_enc_key, org_mac_key)
+        uris_payload = [{'match': None, 'uri': enc_uri}]
+
+    payload = {
+        'type': 1,  # Login
+        'organizationId': ORG_ID,
+        'name': enc_name,
+        'notes': None,
+        'login': {
+            'username': enc_user,
+            'password': enc_pw,
+            'uris': uris_payload,
+            'totp': None,
+        },
+        'collectionIds': [],
+    }
+
+    headers = {
+        'Authorization': f'Bearer {session.access_token}',
+        'Content-Type': 'application/json',
+    }
+
+    if existing_id:
+        # PUT update
+        url = f'{session.base_url}/api/ciphers/{existing_id}'
+        body = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=body, method='PUT', headers=headers)
+        with urllib.request.urlopen(req) as resp:
+            if resp.status == 200:
+                print(f"OK: '{name}' mis à jour")
+            else:
+                print(f"ERREUR: HTTP {resp.status}", file=sys.stderr)
+                sys.exit(1)
+    else:
+        # POST create
+        url = f'{session.base_url}/api/ciphers'
+        body = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=body, method='POST', headers=headers)
+        with urllib.request.urlopen(req) as resp:
+            if resp.status in (200, 201):
+                print(f"OK: '{name}' créé")
+            else:
+                print(f"ERREUR: HTTP {resp.status}", file=sys.stderr)
+                sys.exit(1)
+
+
 # --- Main ---
 
 if __name__ == '__main__':
@@ -439,7 +536,7 @@ if __name__ == '__main__':
     command = sys.argv[1]
     args = sys.argv[2:]
 
-    commands = {'list': cmd_list, 'get': cmd_get, 'export': cmd_export}
+    commands = {'list': cmd_list, 'get': cmd_get, 'set': cmd_set, 'export': cmd_export}
     if command in commands:
         commands[command](args, env)
     else:

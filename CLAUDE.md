@@ -21,13 +21,22 @@ Utilisateurs → HTTPS → Traefik (SSL Let's Encrypt) → Coolify → Conteneur
 
 **Projets Coolify** : `hma-monitoring` (Uptime Kuma, Vaultwarden) · `hma-apps` (services métier). Tout nouveau service métier va dans `hma-apps`.
 
-**Bases de données** : chaque service applicatif a sa propre instance PostgreSQL dédiée. Instance Supabase Cloud séparée pour ETL Pennylane (eu-west-3).
+**Bases de données** : chaque service applicatif a sa propre instance PostgreSQL dédiée. Base métier principale : **PostgreSQL HMA standalone** (`hma-db`) — remplace Supabase self-hosted. Instance Supabase Cloud (eu-west-3) en veille.
 
 **Qdrant** : base vectorielle pour le RAG comptable. Exposé en HTTPS sur `qdrant.hma.business`. API key dans `.mcp.json` et Vaultwarden. Serveur MCP local (`mcp-qdrant-hma/server.py`) pour accès direct depuis Claude Code.
 
 **Infrastructure multi-VPS** :
 - VPS principal (187.124.150.82) : Coolify HMA, tous les services métier
 - VPS secondaire (168.231.69.226) : anciens services en cours de migration
+
+**Stack de visualisation / saisie** :
+- **Superset** (`superset.hma.business`) : dashboards + SQL Lab (lecture seule). Driver `psycopg2-binary` installé via volume persistant (`PYTHONPATH=/app/superset_home/pip_packages`)
+- **pgAdmin** (`pgadmin.hma.business`) : administration PostgreSQL
+- **Appsmith** (`appsmith.hma.business`) : saisie, formulaires, interfaces métier (écriture)
+
+Services supprimés (avril 2026) : Teable (redondant), Supabase self-hosted (remplacé par PostgreSQL standalone)
+
+**Metabase** (`metabase.hma.business`) : BI alternative à Superset. Format euros français natif (`number.locale: "fr"`), drill-through natif avec Query Builder. Credentials dans Vaultwarden (`Metabase — HMA`). Connecté à PostgreSQL HMA via réseau Docker `coolify`. Skill : `/metabase-dashboard`.
 
 Inventaire complet des services et de leur statut : `docs/services.md`
 
@@ -49,12 +58,18 @@ Variables requises dans `.env` :
 VAULTWARDEN_URL=https://vaultwarden.poworkiki.cloud
 VAULTWARDEN_CLIENT_ID=...
 VAULTWARDEN_CLIENT_SECRET=...
+VAULTWARDEN_EMAIL=poworkiki@gmail.com
+VAULTWARDEN_MASTER_PASSWORD=...
 COOLIFY_API_TOKEN=...
+HMA_DB_URL=postgresql://postgres:PASSWORD@h2dnymbgnulve0kko87nh856:5432/postgres
 ```
 
-### Scripts Vaultwarden (API OAuth 2.0)
+### Scripts Vaultwarden (déchiffrement client-side)
 
 Tous les scripts chargent automatiquement le `.env` à la racine.
+Architecture : `vw-secret.sh` (wrapper bash) → `vw-crypto.py` (PBKDF2 + RSA-OAEP + AES-CBC).
+Organisation cible : `stack_hma` (ID: `f7bd1540-c6ed-45fb-8e8e-3ca9a9d9db23`).
+Requiert Python avec `cryptography` installé dans le venv système.
 
 ```bash
 ./scripts/vw-secret.sh get "Pennylane API — ETPA"                    # Récupère le password d'un secret
@@ -127,7 +142,7 @@ Source : Pennylane API `/ledger_accounts` (1 412 comptes) → mapping analytique
 Le mapping Python dans `generate-pcg-seed.py` est la **source de vérité unique** pour la classification des comptes.
 `generate-pcg-qdrant.py` dérive la collection Qdrant `kb_pcg_analytique` à partir des mêmes données (embeddings OpenAI `text-embedding-3-small`).
 
-### SQL Supabase
+### SQL PostgreSQL HMA
 
 Exécuter les scripts dans l'ordre numérique par dossier :
 ```bash
@@ -138,6 +153,10 @@ psql $HMA_DB_URL -f sql/01-schema/003-pcg-analytique.sql
 psql $HMA_DB_URL -f sql/01-schema/004-compte-resolution.sql
 psql $HMA_DB_URL -f sql/01-schema/005-fec-import.sql
 psql $HMA_DB_URL -f sql/01-schema/006-fec-ecriture.sql
+psql $HMA_DB_URL -f sql/01-schema/007-sync-metadata.sql
+psql $HMA_DB_URL -f sql/01-schema/008-dim-calendrier.sql
+psql $HMA_DB_URL -f sql/01-schema/009-pcg-crd-mapping.sql
+psql $HMA_DB_URL -f sql/01-schema/010-pennylane-balance.sql
 
 # 2. Données de référence
 psql $HMA_DB_URL -f sql/02-data/001-pcg-analytique-seed.sql
@@ -145,23 +164,29 @@ psql $HMA_DB_URL -f sql/02-data/001-pcg-analytique-seed.sql
 # 3. Fonctions (avant les vues qui en dépendent)
 psql $HMA_DB_URL -f sql/04-functions/resolve-compte.sql
 psql $HMA_DB_URL -f sql/04-functions/refresh-views.sql
+psql $HMA_DB_URL -f sql/04-functions/refresh-views-conditional.sql
 
-# 4. Vues matérialisées (ordre de dépendance)
+# 4. Vue matérialisée (seule MV restante) + vues simples
 psql $HMA_DB_URL -f sql/03-views/001-mv-balance-generale.sql
-psql $HMA_DB_URL -f sql/03-views/002-mv-bilan.sql
-psql $HMA_DB_URL -f sql/03-views/003-mv-bilan-fonctionnel.sql
-psql $HMA_DB_URL -f sql/03-views/004-mv-compte-resultat.sql
-psql $HMA_DB_URL -f sql/03-views/005-mv-resultat-differentiel.sql
-psql $HMA_DB_URL -f sql/03-views/006-mv-sig.sql
 psql $HMA_DB_URL -f sql/03-views/007-v-controles-coherence.sql
+psql $HMA_DB_URL -f sql/03-views/009-vues-base-comptables.sql
+psql $HMA_DB_URL -f sql/03-views/010-refactoring-vues-grand-livre.sql  # TOUTES les vues dérivées
 ```
 
-On peut aussi exécuter les migrations via le MCP Supabase (`apply_migration`, `execute_sql`).
+**Architecture refactorée (avril 2026)** : les anciennes vues matérialisées (`mv_sig`, `mv_bilan`, `mv_compte_resultat`, `mv_bilan_fonctionnel`, `mv_resultat_differentiel`) ont été **supprimées**. Elles sont remplacées par des vues simples dérivées de `v_grand_livre` dans `010-refactoring-vues-grand-livre.sql`. Seule `mv_balance_generale` reste matérialisée.
 
-**Ordre de rafraîchissement des vues** (géré par `refresh_all_views()`) :
-1. `mv_balance_generale` (base de toutes les autres)
-2. `mv_bilan`, `mv_compte_resultat`, `mv_sig` (dépendent de la balance, parallèles entre elles)
-3. `mv_bilan_fonctionnel`, `mv_resultat_differentiel` (dépendent du bilan ou du CR)
+```
+fec_ecriture + pcg_analytique + dim_calendrier
+    → v_grand_livre (source unique)
+        → v_balance, v_sig, v_sig_drilldown
+        → v_compte_resultat, v_crd, v_crd_drilldown
+        → v_bilan, v_bilan_fonctionnel
+        → v_ytd_mensuel/trimestriel/annuel
+```
+
+On peut aussi exécuter les migrations via SSH sur le VPS : `ssh root@187.124.150.82 "docker exec h2dnymbgnulve0kko87nh856 psql -U postgres -f /dev/stdin" < fichier.sql`
+
+**Rafraîchissement** : `refresh_all_views()` ne rafraîchit que `mv_balance_generale` (seule vue matérialisée). Toutes les autres vues sont simples et se mettent à jour automatiquement.
 
 ### ETL Pennylane (sync incrémental)
 
@@ -175,9 +200,30 @@ python3 scripts/sync-pennylane.py --full-sync          # Force re-sync complet
 cd hma-toolbox
 docker compose run toolbox scripts/sync-pennylane.py
 docker compose run toolbox scripts/sync-pennylane.py --structure HMA
+docker compose run toolbox scripts/sync-pennylane.py --full              # Force full fetch
+docker compose run toolbox scripts/sync-pennylane.py --skip-refresh      # Sync sans refresh vues
+docker compose run toolbox scripts/sync-pennylane.py --force-refresh     # Force refresh meme sans changement
+docker compose run toolbox scripts/sync-pennylane.py --endpoints journals ledger_accounts  # Endpoints specifiques
 ```
 
-Le sync utilise un fingerprint MD5 pour la déduplication et gère la pagination curseur + retry/backoff (429).
+**Optimisations sync** :
+- **Count check** : compare le nombre de lignes local vs Pennylane avant de syncer — skip si identique
+- **sync_metadata** : table de tracking par structure/endpoint (dernier sync, count, statut)
+- **Refresh conditionnel** : `refresh_views_if_needed()` ne rafraîchit les vues que si des données ont changé
+- **Delta sync** : utilise `updated_since` basé sur le dernier import réussi
+- **Fingerprint MD5** : déduplication via hash unique, `ON CONFLICT DO NOTHING`
+
+### Contrôle de cohérence Pennylane vs GL
+
+```bash
+python3 scripts/sync-pennylane-balance.py                     # Import trial_balance Pennylane (contrôle)
+python3 scripts/sync-pennylane-balance.py --structure STIVMAT  # Une seule structure
+python3 scripts/sync-pennylane-balance.py --year 2025          # Année spécifique
+```
+
+Table `pennylane_balance` = snapshot de la trial_balance Pennylane. Vues de contrôle :
+- `v_controle_balance` : compare GL (fec_ecriture) vs Pennylane (pennylane_balance) par compte
+- `v_controle_resume` : résumé par structure (nb OK, nb écarts, écart total)
 
 ### Déploiement workflow n8n
 
@@ -187,7 +233,11 @@ python3 scripts/deploy-n8n-workflow.py n8n/workflow-sync-pennylane.json   # Dép
 
 ### Workflow n8n
 
-`n8n/workflow-sync-pennylane.json` — workflow de synchronisation Pennylane → Supabase pour les 4 structures. À importer dans n8n via l'UI ou l'API.
+`n8n/workflow-sync-pennylane.json` — workflow de synchronisation Pennylane → PostgreSQL pour les 4 structures.
+- **Cron toutes les 2h** + déclenchement manuel
+- Refresh conditionnel des vues (`refresh_views_if_needed()`)
+- MAJ `sync_metadata` à chaque exécution
+- À importer dans n8n via l'UI ou l'API
 
 ---
 
@@ -385,7 +435,7 @@ Headers : `Authorization: Bearer <access_token>`, `Content-Type: application/jso
 | Catégorie | Entrées |
 |-----------|---------|
 | **Infra VPS** | VPS Hostinger (root), Coolify Admin, PostgreSQL |
-| **Apps HMA** | n8n, Odoo, Apache Superset, NocoDB, Metabase, Uptime Kuma |
+| **Apps HMA** | n8n, Odoo, Apache Superset, Metabase, NocoDB, Uptime Kuma |
 | **APIs** | Pennylane (ETPA, HMA, STIVMAT, STA, Sandbox), OpenAI, Claude Code HMA |
 | **Bases de données** | Odoo PostgreSQL, n8n PostgreSQL, PostgreSQL standalone, Supabase Cloud (x2) |
 | **Vecteur** | Qdrant HMA, Qdrant Source |
@@ -465,11 +515,50 @@ Nommage : `analyse-<type>-<YYYY>-<MM>.md` — générés par le skill `/pennylan
 - **Compte de Résultat** : produits/charges par rubrique
 - **Bilan comptable** : actif (brut-amort=net), passif
 - **Bilan fonctionnel** : emplois/ressources stables, FRNG, BFR, TN
-- **Résultat différentiel** : MCV, seuil de rentabilité, point mort
+- **CRD (Compte de Résultat Différentiel)** : CA → MCV → Rés. exploitation → RCAI → Rés. net → CAF + seuil de rentabilité, point mort, marge de sécurité + pourcentages relatifs (% du CA)
 - **25+ ratios financiers** : liquidité, solvabilité, rentabilité, rotation, sectoriels
 - **Consolidation groupe** : agrégation, élimination intra-groupe
 
 **Toujours consulter ce référentiel** avant de coder ou modifier une vue matérialisée.
+
+---
+
+## Superset — Dashboards
+
+Instance : `superset.hma.business` — credentials dans Vaultwarden (`Apache Superset`).
+Conteneur : `superset-mjhp747l60b4lzhkc1gfkari` — config FR dans `/app/superset_home/superset_config.py`.
+Skill : `/superset-dashboard` — création/modification/diagnostic de dashboards via l'API REST.
+
+### Feature flags Superset
+
+Config dans `/app/superset_home/superset_config.py` :
+```python
+FEATURE_FLAGS = {
+    "DRILL_TO_DETAIL": True,    # Clic droit → voir les écritures brutes
+    "DRILL_BY": True,           # Clic droit → drill par dimension
+    "DASHBOARD_CROSS_FILTERS": True,  # Cross-filter entre charts
+}
+```
+
+### Dashboards déployés
+
+| Dashboard | URL | Charts | Filtres |
+|---|---|---|---|
+| **Q1 2026 - Performance** | `/superset/dashboard/q1-2026/` | 9 (6 KPI + graphiques + CRD) | Entreprise, Trimestre, Mois |
+| **SIG + CRD — Analyse détaillée** | `/superset/dashboard/sig-crd/` | 7 (résumé + détail cross-filter) | Entreprise, Trimestre, Mois |
+| **Bilan et structure financière** | `/superset/dashboard/bilan/` | 3 | Entreprise |
+| **Grand Livre et Balance** | `/superset/dashboard/grand-livre/` | 8 (résumé + détail cross-filter) | Entreprise |
+| **CRD — Drilldown** | `/superset/dashboard/crd-drilldown/` | 9 (KPI + barres + courbe + drilldown) | Entreprise, Trimestre, Mois |
+| **CRD (ancien)** | `/superset/dashboard/crd/` | 16 | Entreprise, Trimestre |
+
+**Note** : les filtres Superset utilisent `adhoc_filters` hardcodés (`annee=2026`) car les native filters ne s'appliquent pas aux charts créés par API. Le filtre Année est dans la sidebar mais décoratif.
+
+### API Superset — Points clés
+
+- **Auth** : session cookie + CSRF token (le JWT seul échoue pour PUT/POST)
+- **Charts créés par API** : nécessitent un `query_context` pour s'afficher sur le dashboard — soit le passer dans le payload, soit ouvrir le chart dans Explore → Update → Save
+- **viz_type validés** : `echarts_timeseries_bar`, `echarts_timeseries_line`, `echarts_pie`, `big_number_total`, `table`, `pivot_table_v2` — ne PAS utiliser `echarts_bar`, `dist_bar`, `bar` (non enregistrés)
+- **Format euros** : `y_axis_format: ",.0f"` pour KPI, `valueFormat: ",.2f"` pour pivots
 
 ---
 
@@ -482,8 +571,8 @@ Artefacts Spec-Kit dans `specs/001-agent-ia-comptable/` (spec, plan, tasks, rese
 
 | Chantier | Périmètre | Statut |
 |---|---|---|
-| **A** | Socle données : FEC, Balance, Bilan, CR, SIG (Supabase + Qdrant `kb_pcg_analytique`) | 🚧 En cours |
-| **B** | Dashboards Metabase (consomment les vues du chantier A) | ⬜ |
+| **A** | Socle données : FEC, Balance, Bilan, CR, SIG (PostgreSQL HMA + Qdrant `kb_pcg_analytique`) | 🚧 En cours |
+| **B** | Dashboards Superset (consomment les vues du chantier A) | 🚧 En cours |
 | **C** | Budget + saisie Appsmith + tables override V/F | ⬜ |
 | **D** | Système multi-agents (5 agents n8n) | ⬜ |
 | **E** | Mémoire agents (Qdrant `agent_mem_*` + feedback) | ⬜ |
@@ -497,19 +586,25 @@ Utilisateur → Directeur de Mission → Expert(s) → Réviseur Qualité → Sy
 | Agent | Rôle | Sources |
 |---|---|---|
 | Directeur de Mission | Route, délègue, synthétise | Appel des 4 autres agents |
-| Expert-Comptable Senior | Chiffres + Social (paie, CC, LODEOM social) | Pennylane API, Supabase SQL, Qdrant KB |
+| Expert-Comptable Senior | Chiffres + Social (paie, CC, LODEOM social) | Pennylane API, PostgreSQL HMA SQL, Qdrant KB |
 | Juriste Senior | Droit fiscal, sociétés, contrats, travail | Qdrant KB (manuels, réglementation) |
-| Analyste Financier Senior | SIG, ratios, simulations, recommandations | Supabase vues matérialisées, Pennylane API |
-| Réviseur Qualité | Vérifie calculs, croise sources, score confiance | Supabase SQL, Qdrant KB, Pennylane API |
+| Analyste Financier Senior | SIG, ratios, simulations, recommandations | PostgreSQL HMA vues matérialisées, Pennylane API |
+| Réviseur Qualité | Vérifie calculs, croise sources, score confiance | PostgreSQL HMA SQL, Qdrant KB, Pennylane API |
 
 **Mémoire structurée** (3 niveaux par agent) :
 - **Long terme** (Qdrant) : outputs passés indexés par similarité — 4 collections `agent_mem_*`
-- **Court terme** (Supabase `agent_session`) : contexte session partagé entre agents
-- **Procédurale** (Supabase `agent_feedback`) : scoring + few-shot injection
+- **Court terme** (PostgreSQL HMA `agent_session`) : contexte session partagé entre agents
+- **Procédurale** (PostgreSQL HMA `agent_feedback`) : scoring + few-shot injection
 
-**Données (dual Supabase + Qdrant)** :
-- **pcg_analytique** (Supabase) : mapping des 1 412 comptes PCG (SIG, CR, Bilan, BF, V/F) — source de vérité : `scripts/generate-pcg-seed.py`
-- **kb_pcg_analytique** (Qdrant) : même mapping enrichi en texte français pour RAG — dérivé de Supabase, embeddings OpenAI `text-embedding-3-small`
-- **fec_ecriture** (Supabase) : écritures comptables normalisées FEC (Art. A.47 A-1 LPF)
-- **Vues matérialisées** (Supabase) : mv_balance_generale, mv_sig, mv_compte_resultat, mv_bilan, mv_bilan_fonctionnel, mv_resultat_differentiel, mv_budget_vs_realise
-- **KB existantes** (Qdrant) : kb_manuels (18 132 pts), kb_reglementation (11 pts), kb_conventions (6 pts)
+**Données (PostgreSQL HMA + Qdrant)** :
+- **dim_calendrier** (PostgreSQL) : table de dimension temporelle (2020-2030), 4 018 jours. Colonnes : `date_jour`, `annee`, `trimestre`, `mois`, `mois_label`, `mois_nom`, `semaine`, `jour_semaine`, `debut_mois`, `fin_mois`
+- **pcg_analytique** (PostgreSQL) : mapping des 1 379 comptes PCG (SIG, CR, Bilan, BF, V/F, **CRD**) — source de vérité : `scripts/generate-pcg-seed.py` + `sql/01-schema/009-pcg-crd-mapping.sql`
+  - Colonnes CRD : `crd_ordre` (1-9), `crd_categorie` (Chiffre d'affaires, Charges variables, etc.), `crd_rubrique` (sous-rubrique), `crd_signe` (+1/-1)
+  - Le CRD s'arrête à l'ordre 6 (Résultat net). Ordres 7-9 = composantes CAF (hors tableau CRD)
+- **pennylane_balance** (PostgreSQL) : snapshot trial_balance Pennylane pour contrôle de cohérence GL vs Pennylane
+- **kb_pcg_analytique** (Qdrant) : même mapping enrichi en texte français pour RAG — dérivé de PostgreSQL, embeddings OpenAI `text-embedding-3-small`
+- **fec_ecriture** (PostgreSQL) : 25 627 écritures comptables normalisées FEC (Art. A.47 A-1 LPF)
+- **Vues matérialisées** (PostgreSQL) : mv_balance_generale, mv_sig, mv_compte_resultat, mv_bilan, mv_bilan_fonctionnel, mv_resultat_differentiel (CRD complet avec CAF + %)
+- **Vues enrichies** (PostgreSQL) : v_sig, v_bilan, v_compte_resultat, v_bilan_fonctionnel, v_balance_generale, v_resultat_differentiel (ajoutent `entite_nom` + `exercice_label`), v_ytd_mensuel/trimestriel/annuel, v_sig_drilldown, v_crd_drilldown (avec `annee`, `trimestre`, `mois_label`)
+- **Vues de base comptables** (PostgreSQL) : v_grand_livre (écritures + solde progressif), v_journal (totaux par journal/mois), v_balance_auxiliaire (solde par tiers + non lettré), v_balance_agee (créances/dettes par tranche d'ancienneté)
+- **KB existantes** (Qdrant) : kb_manuels (18 132 pts), kb_reglementation (11 pts), kb_conventions (6 pts), kb_pcg_analytique (1 372 pts)

@@ -1,25 +1,16 @@
 -- ============================================
 -- Fonction: refresh_all_views()
--- Rafraichit toutes les vues materialisees
--- dans le bon ordre de dependance
+-- Rafraichit la vue materialisee mv_balance_generale
+-- Toutes les autres vues sont des vues simples
+-- derivees du grand livre — pas de refresh necessaire
 -- ============================================
 
 CREATE OR REPLACE FUNCTION refresh_all_views()
 RETURNS void AS $$
 BEGIN
-    -- Niveau 1 : balance generale (base de toutes les autres)
     REFRESH MATERIALIZED VIEW CONCURRENTLY mv_balance_generale;
-
-    -- Niveau 2 : vues qui dependent de la balance (paralleles entre elles)
-    REFRESH MATERIALIZED VIEW CONCURRENTLY mv_bilan;
-    REFRESH MATERIALIZED VIEW CONCURRENTLY mv_compte_resultat;
-    REFRESH MATERIALIZED VIEW CONCURRENTLY mv_sig;
-
-    -- Niveau 3 : vues qui dependent du bilan ou du CR
-    REFRESH MATERIALIZED VIEW CONCURRENTLY mv_bilan_fonctionnel;
-    REFRESH MATERIALIZED VIEW CONCURRENTLY mv_resultat_differentiel;
 END;
 $$ LANGUAGE plpgsql;
 
 COMMENT ON FUNCTION refresh_all_views() IS
-    'Rafraichit les 6 vues materialisees dans l''ordre : balance → bilan+CR+SIG → BF+resultat diff';
+    'Rafraichit mv_balance_generale (seule vue materialisee). Les vues v_sig, v_crd, v_bilan, etc. sont des vues simples sur v_grand_livre.';

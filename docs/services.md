@@ -51,17 +51,20 @@
 | superset-db | PostgreSQL 16 | Apache Superset | hma-apps | ✅ Actif | — | Base dédiée Superset |
 | n8n-db | PostgreSQL 16 | n8n | hma-apps | ✅ Actif | — | Base dédiée n8n |
 | ~~metabase-db~~ | ~~PostgreSQL 16 Alpine~~ | ~~Metabase~~ | ~~metabase_hma~~ | 🗑️ Supprimé | — | Supprimé avec Metabase |
-| hma-db | PostgreSQL 16 | FEC / Vues matérialisées / Agents | hma-apps | ✅ Actif | — | Remplace Supabase self-hosted — base métier principale |
+| hma-db | PostgreSQL 16 | FEC / Vues matérialisées / Agents | hma-apps | ✅ Actif | — | Remplace Supabase self-hosted — 25 779 écritures FEC, 1 412 comptes PCG, 6 vues financières |
 | ~~supabase-cloud~~ | ~~PostgreSQL 17~~ | ~~Pennylane ETL (backup)~~ | ~~Supabase Cloud (eu-west-3)~~ | ⏸️ Suspendu | — | `db.uhuvuhyszrudzgcefolo.supabase.co` — à confirmer si encore utilisé |
 | ~~supabase-db~~ | ~~PostgreSQL 15~~ | ~~Supabase self-hosted~~ | ~~hma-apps~~ | 🗑️ Supprimé | — | Remplacé par hma-db |
 
 ---
 
-## 🤖 Services IA
+## 🤖 Services IA (Projet Coolify : `hma-agents`)
 
 | Nom | Modèle / API | Usage | Environnement | Statut | Notes |
 |---|---|---|---|---|---|
-| *(à compléter)* | API Anthropic | — | Production | — | — |
+| HMAGENTS | CrewAI + LlamaIndex + mem0 + Claude | Système multi-agents comptable (5 agents) | Docker / Coolify | 🚧 En cours | `agents.hma.business` — Chantier D |
+| Claude (Anthropic) | claude-sonnet-4-6 | LLM raisonnement agents | API externe | ✅ Actif | Token dans Vaultwarden |
+| OpenAI | text-embedding-3-small | Embeddings vectoriels | API externe | ✅ Actif | Token dans Vaultwarden |
+| Qdrant | — | Stockage vectoriel (KB + mémoire agents) | Docker / Coolify | ✅ Actif | `qdrant.hma.business` — 4 KB + 4 collections mémoire |
 
 ---
 
@@ -70,9 +73,10 @@
 | Projet Coolify | Rôle | Services |
 |---|---|---|
 | `hma-monitoring` | Outils internes / infra | Uptime Kuma, Vaultwarden |
-| `hma-apps` | Services métier | Odoo 18 + PostgreSQL, Apache Superset + PostgreSQL + Redis, n8n + PostgreSQL, Appsmith, PostgreSQL (hma-db) |
+| `hma-apps` | Services métier | Odoo 18 + PostgreSQL, Apache Superset + PostgreSQL + Redis, n8n + PostgreSQL, Appsmith, pgAdmin, PostgreSQL (hma-db) |
+| `hma-agents` | Système multi-agents IA | HMAGENTS (CrewAI + LlamaIndex + mem0 + Claude) |
 
-> **Convention** : tout nouveau service métier est déployé dans le projet `hma-apps`.
+> **Convention** : services métier → `hma-apps`, agents IA → `hma-agents`.
 
 ---
 
@@ -112,6 +116,8 @@ Copier-coller ce bloc dans la section appropriée lors de l'ajout d'un nouveau s
 | 2026-04 | Teable | Supprimé de Coolify | Redondant — exploration via Superset SQL Lab |
 | 2026-04 | Supabase | Supprimé de Coolify | Remplacé par PostgreSQL standalone (hma-db) — plus léger, pas besoin du BaaS complet |
 | 2026-04 | pgAdmin 4 | Déployé via Coolify | `pgadmin.hma.business` — administration PostgreSQL HMA |
+| 2026-04 | hma-agents | Projet Coolify créé | Projet dédié aux agents IA (HMAGENTS) |
+| 2026-04 | HMAGENTS | Scaffolding | CrewAI + LlamaIndex + mem0 + Claude + FastAPI — `agents.hma.business` |
 
 ---
 

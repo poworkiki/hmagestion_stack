@@ -6,18 +6,18 @@
 
 ## Summary
 
-Construire le socle de données financières : synchroniser les écritures comptables des 4 structures depuis Pennylane vers Supabase (format FEC normalisé), mapper les 1 412 comptes PCG avec catégories analytiques, et produire 6 vues matérialisées (Balance générale, Bilan, Bilan fonctionnel, Compte de résultat, Résultat différentiel, SIG) + 1 vue de contrôle de cohérence.
+Construire le socle de données financières : synchroniser les écritures comptables des 4 structures depuis Pennylane vers PostgreSQL HMA (format FEC normalisé), mapper les 1 412 comptes PCG avec catégories analytiques, et produire 6 vues matérialisées (Balance générale, Bilan, Bilan fonctionnel, Compte de résultat, Résultat différentiel, SIG) + 1 vue de contrôle de cohérence.
 
 ## Technical Context
 
-**Language/Version**: SQL (PostgreSQL 15+ via Supabase), JavaScript (n8n Code nodes)
-**Primary Dependencies**: Supabase (self-hosted), n8n, Pennylane API v2
-**Storage**: PostgreSQL (Supabase) — ~200k lignes d'écritures FEC estimées
-**Testing**: Requêtes SQL de validation (v_controles_coherence), tests manuels via Metabase
+**Language/Version**: SQL (PostgreSQL 15+ via PostgreSQL HMA standalone), JavaScript (n8n Code nodes)
+**Primary Dependencies**: PostgreSQL HMA (standalone), n8n, Pennylane API v2
+**Storage**: PostgreSQL HMA — ~200k lignes d'écritures FEC estimées
+**Testing**: Requêtes SQL de validation (v_controles_coherence), tests manuels via Superset
 **Target Platform**: VPS Hostinger (Ubuntu 24.04), conteneurs Docker via Coolify
 **Project Type**: Pipeline ETL + schéma analytique (pas de code applicatif)
 **Performance Goals**: Vues matérialisées rafraîchies en < 60 secondes, sync Pennylane < 5 minutes par structure
-**Constraints**: Tokens API Pennylane en lecture seule, secrets dans Vaultwarden uniquement, RLS Supabase pour isolation multi-entité
+**Constraints**: Tokens API Pennylane en lecture seule, secrets dans Vaultwarden uniquement, RLS PostgreSQL pour isolation multi-entité
 **Scale/Scope**: 4 entités, ~200k écritures, 1 412 comptes PCG, 7 vues matérialisées
 
 ## Constitution Check
@@ -40,7 +40,7 @@ Constitution v1.0.0 ratifiée le 2026-04-02. Vérification des 5 principes :
 specs/001-agent-ia-comptable/
 ├── plan.md              # Ce fichier
 ├── research.md          # Recherches techniques (Pennylane API, FEC, PCG)
-├── data-model.md        # Modèle de données Supabase complet
+├── data-model.md        # Modèle de données PostgreSQL HMA complet
 ├── contracts/
 │   └── pennylane-api.md # Contrat API Pennylane (endpoints, formats)
 └── tasks.md             # Tâches (généré par /speckit.tasks)
@@ -76,7 +76,7 @@ n8n/
 
 scripts/
 ├── generate-pcg-seed.py                 # Pennylane → SQL seed (source de vérité mapping)
-└── generate-pcg-qdrant.py               # Supabase → Qdrant kb_pcg_analytique (embeddings)
+└── generate-pcg-qdrant.py               # PostgreSQL HMA → Qdrant kb_pcg_analytique (embeddings)
 ```
 
 **Structure Decision**: Organisation par couches SQL numérotées (exécution séquentielle). Le dossier `n8n/` contient l'export JSON du workflow de synchronisation. Pas de code applicatif — tout est SQL + n8n.
@@ -91,7 +91,7 @@ scripts/
 | Créer `exercice` | Exercices comptables par entité | entite |
 | Créer `pcg_analytique` (structure) | Table vide avec colonnes SIG/CR/Bilan/BF/V-F | — |
 | Charger 1 412 comptes PCG | Seed complet avec mapping analytique | pcg_analytique |
-| Charger 1 412 comptes dans Qdrant `kb_pcg_analytique` | Texte enrichi + embeddings OpenAI | pcg_analytique (Supabase) |
+| Charger 1 412 comptes dans Qdrant `kb_pcg_analytique` | Texte enrichi + embeddings OpenAI | pcg_analytique (PostgreSQL HMA) |
 | Créer `compte_resolution` + `resolve_compte()` | Résolution préfixe FEC → numéro PCG | pcg_analytique |
 
 ### Phase A2 — Tables FEC et import
@@ -129,6 +129,33 @@ scripts/
 | Sync 3 cycles consécutifs sans doublons | Validation FR-018 | Phase A3 |
 | Croiser SIG avec Pennylane `/trial_balance` | Validation FR-011 | Phase A4 |
 | Vérifier D=C sur toutes les entités | Validation v_controles_coherence | Phase A4 |
+
+## Requirements reportés (hors Chantier A) — Stack HMAGENTS
+
+| Requirement | Chantier | Stack HMAGENTS |
+|---|---|---|
+| FR-001 → FR-016 (5 agents, experts, réviseur) | D | **CrewAI** (orchestration) + **LlamaIndex** (RAG/SQL tools) + **Claude** (LLM) |
+| FR-022 (override V/F) | C | — |
+| FR-024 (mémoire long terme) | E | **mem0 OSS** → Qdrant `agent_mem_*` |
+| FR-025 (mémoire court terme) | E | PostgreSQL HMA `agent_session` |
+| FR-026 (mémoire procédurale) | E | PostgreSQL HMA `agent_feedback` |
+| FR-027 → FR-028 (dashboards Superset) | B | — |
+| FR-029 → FR-030 (budget, saisie Appsmith) | C | — |
+
+### Stack HMAGENTS (Chantiers D + E)
+
+Configuration détaillée : [`hmagents-stack.md`](hmagents-stack.md)
+
+```
+CrewAI (orchestration 5 agents, Process.hierarchical)
+  ├── LlamaIndex (RAG Qdrant KB + NLSQLTableQueryEngine PostgreSQL HMA)
+  ├── mem0 OSS (mémoire long terme via Qdrant)
+  ├── Claude (LLM Anthropic — raisonnement agents)
+  └── OpenAI (embeddings text-embedding-3-small)
+
+Déploiement : Docker → agents.hma.business (Coolify, hma-apps)
+Trigger : n8n webhook / chat → POST /ask
+```
 
 ## Complexity Tracking
 

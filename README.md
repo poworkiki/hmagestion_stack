@@ -57,8 +57,8 @@ Voir le fichier détaillé → **[docs/services.md](docs/services.md)**
 | Odoo 18 | ERP / CRM | [odoo.hma.business](https://odoo.hma.business) | ✅ Actif |
 | Apache Superset | BI / Data Visualization | [superset.hma.business](https://superset.hma.business) | ✅ Actif |
 | n8n | Workflow Automation | [n8n.hma.business](https://n8n.hma.business) | ✅ Actif |
-| Metabase | BI / Analytics | [metabase.hma.business](http://metabase.hma.business) | ✅ Actif |
-| Budibase | Low-code platform | [budibase.hma.business](http://budibase.hma.business) | 🔴 Inactif |
+| Appsmith | Low-code / Saisie | [appsmith.hma.business](https://appsmith.hma.business) | ✅ Actif |
+| pgAdmin 4 | Admin PostgreSQL | [pgadmin.hma.business](https://pgadmin.hma.business) | ✅ Actif |
 
 ---
 
@@ -99,4 +99,4 @@ Le suivi des évolutions est géré via les **[GitHub Issues](../../issues)** av
 
 ---
 
-*Maintenu par l'équipe HMA — Dernière mise à jour : 18 Mars 2026 · Coolify ✅ · Uptime Kuma ✅ · Vaultwarden ✅ · Odoo ✅ · Superset ✅ · n8n ✅ · Metabase ✅ · Budibase 🔴*
+*Maintenu par l'équipe HMA — Dernière mise à jour : Avril 2026 · Coolify ✅ · Uptime Kuma ✅ · Vaultwarden ✅ · Odoo ✅ · Superset ✅ · n8n ✅ · Appsmith ✅ · pgAdmin ✅*

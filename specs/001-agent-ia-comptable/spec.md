@@ -9,6 +9,23 @@
 
 HMA est un cabinet de gestion/expertise comptable basé en Guyane qui gère 4 structures : HMA (holding), STIVMAT (transport de personnes), STA (transport de personnes), ETPA (transformation de produits agricoles). Le cabinet a besoin d'un assistant IA capable de répondre à des questions comptables, fiscales, juridiques et financières en s'appuyant sur les données réelles des 4 structures et une base de connaissances métier (ci-après **KB_QDRANT** — collections Qdrant vectorielles).
 
+### Stack technique multi-agents — HMAGENTS
+
+Le système multi-agents s'appelle **HMAGENTS** et repose sur le stack suivant :
+
+| Composant | Rôle |
+|---|---|
+| **CrewAI** | Orchestration multi-agents (`Process.hierarchical`, Directeur = `manager_agent`) |
+| **LlamaIndex** | RAG framework — QueryEngine sur Qdrant KB + SQL sur PostgreSQL HMA |
+| **mem0 OSS** | Mémoire long terme agents (via Qdrant, remplace le code custom) |
+| **Claude** (Anthropic) | LLM raisonnement pour les 5 agents |
+| **OpenAI** | Embeddings uniquement (`text-embedding-3-small`) |
+| **Qdrant** | Stockage vectoriel (KB statiques + mémoire agents) |
+| **FastAPI** | API HTTP — point d'entrée (`agents.hma.business`) |
+
+Déploiement : **service Docker** sur le VPS Hostinger (Coolify, projet `hma-apps`).
+Configuration détaillée : `specs/001-agent-ia-comptable/hmagents-stack.md`
+
 ### Périmètre
 
 Le système couvre 3 niveaux de questions :
@@ -19,7 +36,7 @@ Le système couvre 3 niveaux de questions :
 ### Hypothèses
 
 - Les 4 tokens API Pennylane sont fonctionnels et en lecture seule
-- L'infrastructure est déjà déployée : n8n, Qdrant, Supabase, Metabase, Appsmith, Vaultwarden
+- L'infrastructure est déjà déployée : n8n, Qdrant, PostgreSQL HMA, Superset, Appsmith, Vaultwarden
 - KB_QDRANT contient déjà les manuels DCG/DSCG (18 132 points), la réglementation (11 points) et les conventions collectives (6 points)
 - Les utilisateurs sont des comptables et gestionnaires du cabinet HMA
 - Le système est en français exclusivement
@@ -33,7 +50,7 @@ Le système couvre 3 niveaux de questions :
 
 - Q: Le terme "merge" dans le pattern ETL (staging → merge → refresh) est-il correct en terminologie PostgreSQL ? → A: Remplacé par **"upsert idempotent"** (`INSERT ... ON CONFLICT DO NOTHING`) — terme technique exact PostgreSQL, distinct du `MERGE` SQL standard.
 - Q: Quel terme canonique pour la base de connaissances Qdrant ? → A: **KB_QDRANT** — terme unique utilisé partout. "Base de connaissances" uniquement en première occurrence comme définition.
-- Q: Stratégie d'observabilité pour le pipeline ETL Pennylane → Supabase ? → A: `fec_import` suffit pour le Chantier A (MVP). Observabilité avancée (logs structurés, métriques, alerting Uptime Kuma) reportée en Chantier D/polish.
+- Q: Stratégie d'observabilité pour le pipeline ETL Pennylane → PostgreSQL HMA ? → A: `fec_import` suffit pour le Chantier A (MVP). Observabilité avancée (logs structurés, métriques, alerting Uptime Kuma) reportée en Chantier D/polish.
 - Q: MD5 pour anti-doublons : hash cryptographique ou fingerprint ? → A: **Fingerprint de déduplication** (non-cryptographique). MD5 acceptable pour ~200k écritures. Terminologie normalisée : `fingerprint_md5`.
 - Q: Score de confiance (FR-004) : quelle méthode de calcul ? → A: Reporté au **Chantier D** — la méthode de scoring sera définie lors de la conception du Réviseur Qualité (heuristique, probabiliste ou composite).
 
@@ -90,7 +107,7 @@ Un gestionnaire pose une question complexe nécessitant l'intervention de plusie
 
 ### User Story 4 — Synchronisation des données Pennylane (Priority: P1)
 
-Les données comptables des 4 structures sont synchronisées automatiquement depuis Pennylane vers la base Supabase, permettant des analyses et des vues matérialisées performantes.
+Les données comptables des 4 structures sont synchronisées automatiquement depuis Pennylane vers la base PostgreSQL HMA, permettant des analyses et des vues matérialisées performantes.
 
 **Why this priority** : Sans données à jour, aucune question comptable ne peut recevoir de réponse fiable.
 
@@ -110,7 +127,7 @@ Les gestionnaires consultent des tableaux de bord visuels (SIG, Compte de résul
 
 **Why this priority** : Les dashboards complètent le chat IA en offrant une vue synthétique permanente. Ils sont utiles mais moins critiques que le système conversationnel.
 
-**Independent Test** : Peut être testé en ouvrant le dashboard Metabase SIG et en vérifiant que les 9 soldes intermédiaires sont calculés pour chaque structure.
+**Independent Test** : Peut être testé en ouvrant le dashboard Superset SIG et en vérifiant que les 9 soldes intermédiaires sont calculés pour chaque structure.
 
 **Acceptance Scenarios** :
 
@@ -200,14 +217,14 @@ Les utilisateurs notent les réponses de l'agent (1 à 5) et peuvent fournir des
 
 #### Synchronisation Pennylane
 
-- **FR-017**: System MUST synchroniser les écritures comptables des 4 structures depuis Pennylane vers Supabase via un pattern staging → upsert idempotent → refresh.
+- **FR-017**: System MUST synchroniser les écritures comptables des 4 structures depuis Pennylane vers PostgreSQL HMA via un pattern staging → upsert idempotent → refresh.
 - **FR-018**: System MUST prévenir les doublons d'import via un fingerprint MD5 unique par écriture (empreinte de déduplication non-cryptographique — colonne `fingerprint_md5`).
 - **FR-019**: System MUST rafraîchir les vues matérialisées disponibles après chaque synchronisation (6 vues matérialisées + 1 vue simple non matérialisée `v_controles_coherence` dans le Chantier A, +1 vue `mv_budget_vs_realise` après le Chantier C).
 
 #### Modèle de données
 
 - **FR-020**: System MUST stocker les écritures au format FEC normalisé (18 colonnes + champs calculés, Art. A.47 A-1 LPF).
-- **FR-021**: System MUST maintenir un mapping des 1 412 comptes PCG avec catégories analytiques (SIG, CR, Bilan, Bilan fonctionnel, Variable/Fixe) dans Supabase (`pcg_analytique`) ET dans Qdrant (`kb_pcg_analytique` avec texte enrichi et embeddings pour le RAG des agents).
+- **FR-021**: System MUST maintenir un mapping des 1 412 comptes PCG avec catégories analytiques (SIG, CR, Bilan, Bilan fonctionnel, Variable/Fixe) dans PostgreSQL HMA (`pcg_analytique`) ET dans Qdrant (`kb_pcg_analytique` avec texte enrichi et embeddings pour le RAG des agents).
 - **FR-022** `[Chantier C]`: System MUST permettre l'override de la nature Variable/Fixe par profil sectoriel et par entité.
 - **FR-023**: System MUST résoudre les numéros de compte FEC (avec auxiliaires) vers les comptes PCG via une table de résolution par préfixe décroissant.
 
@@ -245,7 +262,7 @@ Les utilisateurs notent les réponses de l'agent (1 à 5) et peuvent fournir des
 
 - **SC-001** `[Chantier D]` : Les utilisateurs obtiennent une réponse à une question comptable simple en moins de 30 secondes.
 - **SC-002** `[Chantier D]` : Les réponses multi-experts (questions croisées) sont délivrées en moins de 2 minutes.
-- **SC-003** `[Chantier D]` : 95% des réponses chiffrées correspondent aux données sources (Pennylane / Supabase) après vérification du Réviseur.
+- **SC-003** `[Chantier D]` : 95% des réponses chiffrées correspondent aux données sources (Pennylane / PostgreSQL HMA) après vérification du Réviseur.
 - **SC-004** `[Chantier D]` : 100% des réponses citent au moins une source vérifiable (article de loi, compte PCG, collection KB).
 - **SC-005** `[Chantier A]` : La synchronisation Pennylane des 4 structures s'exécute sans doublon sur 3 cycles consécutifs.
 - **SC-006** `[Chantier A]` : Les 6 vues matérialisées du Chantier A se rafraîchissent en moins de 60 secondes après synchronisation (via `refresh_all_views()`).

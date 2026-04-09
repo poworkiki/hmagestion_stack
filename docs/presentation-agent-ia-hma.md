@@ -341,14 +341,24 @@ DIRECTEUR DE MISSION → synthèse finale enrichie → Utilisateur
 
 | Composant | Rôle | Déjà déployé |
 |---|---|---|
-| n8n | Orchestrateur multi-agents + workflows sync | Oui |
+| **HMAGENTS** | Système multi-agents IA (CrewAI + LlamaIndex + mem0 + Claude) | 🚧 En cours |
+| n8n | ETL Pennylane + trigger HMAGENTS + workflows sync | Oui |
 | Qdrant | Base vectorielle RAG (KB comptable + mémoire agents) | Oui |
-| Supabase | PostgreSQL + Auth (FEC, mapping, budget, sessions, feedback) | Oui |
+| PostgreSQL HMA | Base standalone (FEC, mapping, vues matérialisées) | Oui |
 | Pennylane API | Source des données comptables (4 structures) | Oui (tokens OK) |
-| OpenAI API | Embeddings (text-embedding-3-small) + LLM | Oui (clé OK) |
-| Metabase | Dashboards visuels (SIG, Bilan, Budget vs Réalisé) | Oui |
+| OpenAI API | Embeddings (text-embedding-3-small) | Oui (clé OK) |
+| Claude (Anthropic) | LLM raisonnement agents HMAGENTS | Oui (clé OK) |
+| Superset | Dashboards visuels (SIG, Bilan, CRD, Grand Livre) | Oui |
 | Appsmith | Interface de saisie (budget, paramétrage) | Oui |
 | Vaultwarden | Stockage sécurisé des secrets | Oui |
+
+### Chantier A — Socle données (terminé)
+
+- **25 779 écritures FEC** synchronisées (HMA: 830, STIVMAT: 23 536, STA: 126, ETPA: 1 287)
+- **1 412 comptes PCG** mappés (SIG, CR, Bilan, BF, V/F) dans PostgreSQL + Qdrant
+- **6 vues** opérationnelles : balance, bilan, bilan fonctionnel, CR, résultat différentiel, SIG
+- **Refresh** : 0.12s (objectif < 60s)
+- **Sync Pennylane** : toutes les 2h via n8n (cron) + sync incrémental + anti-doublons MD5
 
 ### Collection Qdrant : kb_pcg_analytique
 
