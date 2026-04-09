@@ -1,50 +1,86 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+Sync Impact Report
+- Version change: 0.0.0 (template) → 1.0.0
+- Modified principles: N/A (first initialization)
+- Added sections: 5 Core Principles, Contraintes Opérationnelles, Workflow Qualité, Governance
+- Removed sections: All placeholder tokens replaced
+- Templates requiring updates:
+  - .specify/templates/plan-template.md ✅ compatible (Constitution Check section exists)
+  - .specify/templates/spec-template.md ✅ compatible (no constitution reference needed)
+  - .specify/templates/tasks-template.md ✅ compatible (phase structure aligned)
+- Follow-up TODOs: none
+-->
+
+# Agent IA Comptable HMA — Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Secrets-First (NON-NEGOTIABLE)
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+Aucun secret en clair dans le code, SQL, exports n8n ou fichiers versionnés.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+- Les tokens API (Pennylane, OpenAI, Qdrant) MUST être stockés exclusivement dans Vaultwarden
+- Les variables d'environnement locales MUST passer par `.env` (gitignored)
+- Les credentials n8n MUST référencer Vaultwarden, jamais de valeurs en dur
+- Tout commit contenant un secret MUST être rejeté et le secret révoqué immédiatement
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### II. SQL-Only Data Layer
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+Le socle de données est 100% SQL (PostgreSQL/Supabase) + workflows n8n. Pas de code applicatif pour la couche données.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+- Les vues matérialisées MUST être la seule interface de lecture des états financiers
+- Les transformations de données MUST être implémentées en SQL ou en Code nodes n8n
+- Aucun ORM ou couche d'abstraction applicative ne SHOULD être introduit pour le Chantier A
+- Les scripts Python (seed, embeddings) MUST se limiter à la génération de données, pas à la logique métier
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### III. Référentiel-Driven
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+`scripts/generate-pcg-seed.py` est la source de vérité unique pour le mapping des 1 412 comptes PCG.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+- Toute vue matérialisée MUST être conforme à `docs/compta_analytique.md`
+- Aucun calcul financier (SIG, CR, Bilan, ratios) ne MUST être implémenté sans vérification préalable dans ce référentiel
+- Le mapping analytique (SIG, CR, Bilan, BF, V/F) MUST être modifié uniquement via `generate-pcg-seed.py`, jamais par UPDATE SQL direct
+- Les formules du référentiel MUST citer les comptes PCG exacts utilisés
+
+### IV. 5 Agents Non-Négociable (NON-NEGOTIABLE)
+
+L'architecture multi-agents comporte exactement 5 agents, ni plus ni moins.
+
+- Directeur de Mission : routage, délégation, synthèse
+- Expert-Comptable Senior : chiffres, paie, cotisations, LODEOM social
+- Juriste Senior : droit fiscal, sociétés, contrats, travail
+- Analyste Financier Senior : SIG, ratios, simulations, recommandations
+- Réviseur Qualité : vérification calculs, croisement sources, score confiance
+
+Toute proposition de fusion ou suppression d'un agent MUST être refusée. Cette architecture a été validée par le décideur projet.
+
+### V. French-Only
+
+Tout est en français : code SQL (noms de colonnes, commentaires), documentation, interface utilisateur, réponses des agents, spécifications.
+
+- Les mots-clés techniques (SQL, API, JSON, UUID, etc.) MUST rester en anglais
+- Les titres de Requirements Spec-Kit MUST utiliser les mots-clés `SHALL` / `MUST` en anglais pour la validation
+- Les noms de tables et colonnes SQL MUST être en français ou en notation technique standard (ex: `entite`, `exercice`, `pcg_numero`, `hash_md5`)
+
+## Contraintes Opérationnelles
+
+- Images Docker officielles uniquement pour les services déployés via Coolify
+- Interface claire et minimaliste, pas de mode sombre pour le MVP
+- Isolation multi-entité par RLS Supabase (quand activé)
+- Les 4 structures (HMA, STIVMAT, STA, ETPA) ont des exercices calés sur l'année civile (01/01–31/12)
+
+## Workflow Qualité
+
+- Chaque vue matérialisée MUST être vérifiable par croisement avec les données source Pennylane
+- La vue `v_controles_coherence` MUST être consultée après chaque synchronisation
+- Les vues MUST supporter `REFRESH CONCURRENTLY` (index UNIQUE obligatoire)
+- Tout développement UI MUST être testé avec Playwright
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+- Cette constitution est le document d'autorité maximale pour les décisions architecturales du projet Agent IA Comptable
+- Les principes marqués `(NON-NEGOTIABLE)` ne peuvent être modifiés que par décision explicite du décideur projet, documentée dans un amendement versionné
+- Tout plan ou tâche en conflit avec un principe MUST être signalé comme CRITICAL dans `/speckit.analyze`
+- Les amendements suivent le versionnement sémantique : MAJOR (suppression/redéfinition de principe), MINOR (ajout de principe ou section), PATCH (clarification)
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-04-02 | **Last Amended**: 2026-04-02

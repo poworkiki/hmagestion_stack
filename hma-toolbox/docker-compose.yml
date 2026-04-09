@@ -1,0 +1,35 @@
+services:
+  toolbox:
+    build: .
+    container_name: hma-toolbox
+    restart: "no"
+    environment:
+      # PostgreSQL (reseau Docker interne)
+      - PG_HOST=h2dnymbgnulve0kko87nh856
+      - PG_PORT=5432
+      - PG_USER=postgres
+      - PG_PASSWORD=${PG_PASSWORD}
+      - PG_DATABASE=postgres
+      # Pennylane tokens
+      - PENNYLANE_TOKEN_HMA=${PENNYLANE_TOKEN_HMA}
+      - PENNYLANE_TOKEN_STIVMAT=${PENNYLANE_TOKEN_STIVMAT}
+      - PENNYLANE_TOKEN_STA=${PENNYLANE_TOKEN_STA}
+      - PENNYLANE_TOKEN_ETPA=${PENNYLANE_TOKEN_ETPA}
+      # Odoo (XML-RPC, reseau Docker interne ou HTTPS)
+      - ODOO_URL=${ODOO_URL:-https://odoo.hma.business}
+      - ODOO_DB=${ODOO_DB:-HMA}
+      - ODOO_USER=${ODOO_USER:-hmagestion@gmail.com}
+      - ODOO_PASSWORD=${ODOO_PASSWORD}
+      # Qdrant (pour generate-pcg-qdrant.py)
+      - QDRANT_URL=${QDRANT_URL:-https://qdrant.hma.business:443}
+      - QDRANT_API_KEY=${QDRANT_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    # Mode one-shot : lance le script passe en argument puis s'arrete
+    # Exemples :
+    #   docker compose run toolbox scripts/sync-pennylane.py
+    #   docker compose run toolbox scripts/sync-pennylane.py --structure HMA
+    #   docker compose run toolbox scripts/sync-fec-to-odoo.py
+    #   docker compose run toolbox scripts/sync-fec-to-odoo.py --structure ETPA --dry-run
+    #   docker compose run toolbox scripts/generate-pcg-qdrant.py
+    entrypoint: ["python"]
+    command: ["--version"]
