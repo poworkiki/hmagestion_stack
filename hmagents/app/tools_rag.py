@@ -5,8 +5,15 @@ from llama_index.core import VectorStoreIndex, Settings as LlamaSettings
 from llama_index.core.tools import QueryEngineTool, ToolMetadata
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
+from llama_index.llms.openai import OpenAI as LlamaOpenAI
 
 from app.config import settings
+
+# ── LLM pour les QueryEngines (OpenAI — requis par LlamaIndex) ──────
+LlamaSettings.llm = LlamaOpenAI(
+    model="gpt-4o-mini",
+    api_key=settings.openai_api_key,
+)
 
 # ── Embeddings partagés ──────────────────────────────────────────────
 embed_model = OpenAIEmbedding(

@@ -1,11 +1,12 @@
 """Outils LlamaIndex SQL — QueryEngine sur PostgreSQL HMA (vues matérialisées + FEC)."""
 
-from llama_index.core import SQLDatabase
+from llama_index.core import SQLDatabase, Settings as LlamaSettings
 from llama_index.core.query_engine import NLSQLTableQueryEngine
 from llama_index.core.tools import QueryEngineTool, ToolMetadata
 from sqlalchemy import create_engine
 
 from app.config import settings
+import app.tools_rag  # noqa: F401 — force l'initialisation LLM + embeddings
 
 # ── Connexion PostgreSQL HMA ─────────────────────────────────────────
 pg_engine = create_engine(settings.hma_db_url)
