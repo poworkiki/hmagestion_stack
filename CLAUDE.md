@@ -19,7 +19,7 @@ Utilisateurs → HTTPS → Traefik (SSL Let's Encrypt) → Coolify → Conteneur
                           Wildcard DNS *.hma.business
 ```
 
-**Projets Coolify** : `hma-monitoring` (Uptime Kuma, Vaultwarden) · `hma-apps` (services métier). Tout nouveau service métier va dans `hma-apps`.
+**Projets Coolify** : `hma-monitoring` (Uptime Kuma, Vaultwarden) · `hma-apps` (services métier) · `hma-agents` (HMAGENTS + Qdrant + PostgreSQL HMA). Tout nouveau service métier va dans `hma-apps`, tout ce qui touche aux agents IA va dans `hma-agents`.
 
 **Bases de données** : chaque service applicatif a sa propre instance PostgreSQL dédiée. Base métier principale : **PostgreSQL HMA standalone** (`hma-db`) — remplace Supabase self-hosted. Instance Supabase Cloud (eu-west-3) en veille.
 
@@ -34,9 +34,7 @@ Utilisateurs → HTTPS → Traefik (SSL Let's Encrypt) → Coolify → Conteneur
 - **pgAdmin** (`pgadmin.hma.business`) : administration PostgreSQL
 - **Appsmith** (`appsmith.hma.business`) : saisie, formulaires, interfaces métier (écriture)
 
-Services supprimés (avril 2026) : Teable (redondant), Supabase self-hosted (remplacé par PostgreSQL standalone)
-
-**Metabase** (`metabase.hma.business`) : BI alternative à Superset. Format euros français natif (`number.locale: "fr"`), drill-through natif avec Query Builder. Credentials dans Vaultwarden (`Metabase — HMA`). Connecté à PostgreSQL HMA via réseau Docker `coolify`. Skill : `/metabase-dashboard`.
+Services supprimés (avril 2026) : Metabase (redondant avec Superset), Teable (redondant), Supabase self-hosted (remplacé par PostgreSQL standalone)
 
 Inventaire complet des services et de leur statut : `docs/services.md`
 
@@ -70,6 +68,8 @@ Tous les scripts chargent automatiquement le `.env` à la racine.
 Architecture : `vw-secret.sh` (wrapper bash) → `vw-crypto.py` (PBKDF2 + RSA-OAEP + AES-CBC).
 Organisation cible : `stack_hma` (ID: `f7bd1540-c6ed-45fb-8e8e-3ca9a9d9db23`).
 Requiert Python avec `cryptography` installé dans le venv système.
+
+**⚠️ Rate limit** : Vaultwarden limite les logins (~2 par minute). Pour récupérer plusieurs secrets, utiliser **un seul script Python** qui fait 1 login puis fetch tous les ciphers via `VwSession` (voir `scripts/vw-crypto.py` classe `VwSession`). Ne PAS appeler `vw-secret.sh get` en boucle rapide.
 
 ```bash
 ./scripts/vw-secret.sh get "Pennylane API — ETPA"                    # Récupère le password d'un secret
@@ -112,6 +112,8 @@ curl -s "https://app.pennylane.com/api/external/v2/trial_balance?period_start=20
 ```
 
 **Pagination curseur** (obligatoire depuis 2026) : `cursor` + `limit` (max 100, sauf `/ledger_accounts` max 1000). Boucler tant que `has_more == true`.
+
+**⚠️ `trial_balance` vs `ledger_entries`** : `trial_balance` ne retourne que les écritures **validées** — peut renvoyer 0 pour un exercice non clôturé. Les données FEC en base proviennent de `ledger_entries` (brouillons inclus). Pour les audits, préférer les vues SQL (`v_sig`, `v_bilan`, etc.) qui contiennent toutes les écritures synchronisées.
 
 Endpoints principaux : `/trial_balance`, `/ledger_entries`, `/ledger_entry_lines`, `/ledger_accounts`, `/supplier_invoices`, `/customer_invoices`, `/suppliers`, `/customers`, `/journals`, `/categories`, `/fiscal_years`, `/me`.
 Contrat API détaillé : `specs/001-agent-ia-comptable/contracts/pennylane-api.md`
@@ -571,30 +573,57 @@ Artefacts Spec-Kit dans `specs/001-agent-ia-comptable/` (spec, plan, tasks, rese
 
 | Chantier | Périmètre | Statut |
 |---|---|---|
-| **A** | Socle données : FEC, Balance, Bilan, CR, SIG (PostgreSQL HMA + Qdrant `kb_pcg_analytique`) | 🚧 En cours |
+| **A** | Socle données : FEC, Balance, Bilan, CR, SIG (PostgreSQL HMA + Qdrant `kb_pcg_analytique`) | ✅ Terminé |
 | **B** | Dashboards Superset (consomment les vues du chantier A) | 🚧 En cours |
 | **C** | Budget + saisie Appsmith + tables override V/F | ⬜ |
-| **D** | Système multi-agents (5 agents n8n) | ⬜ |
-| **E** | Mémoire agents (Qdrant `agent_mem_*` + feedback) | ⬜ |
+| **D** | Système multi-agents HMAGENTS (5 agents CrewAI) | ✅ Déployé |
+| **E** | Mémoire agents (mem0 + Qdrant `agent_mem_*` + feedback) | 🚧 Scaffoldé |
 
-### Architecture multi-agents (5 agents, orchestrés par n8n)
+### HMAGENTS — Système multi-agents (`agents.hma.business`)
+
+**Stack** : CrewAI (orchestration) + LlamaIndex (RAG + SQL) + mem0 (mémoire) + GPT-4o (LLM) + FastAPI (API)
+**Config détaillée** : `specs/001-agent-ia-comptable/hmagents-stack.md`
+**Code** : `hmagents/` (Dockerfile, docker-compose, app/)
 
 ```
-Utilisateur → Directeur de Mission → Expert(s) → Réviseur Qualité → Synthèse → Utilisateur
+POST https://agents.hma.business/ask    → Question aux agents
+GET  https://agents.hma.business/health → Health check
 ```
 
-| Agent | Rôle | Sources |
+```bash
+# Test rapide
+curl -sk -X POST https://agents.hma.business/ask \
+  -H "Content-Type: application/json" \
+  -d '{"question":"Quel est le CA de STIVMAT ?", "entite":"STIVMAT", "exercice":"2025"}'
+```
+
+**5 agents** (Process.hierarchical, Directeur = manager_agent) :
+
+| Agent | Rôle | Outils |
 |---|---|---|
-| Directeur de Mission | Route, délègue, synthétise | Appel des 4 autres agents |
-| Expert-Comptable Senior | Chiffres + Social (paie, CC, LODEOM social) | Pennylane API, PostgreSQL HMA SQL, Qdrant KB |
-| Juriste Senior | Droit fiscal, sociétés, contrats, travail | Qdrant KB (manuels, réglementation) |
-| Analyste Financier Senior | SIG, ratios, simulations, recommandations | PostgreSQL HMA vues matérialisées, Pennylane API |
-| Réviseur Qualité | Vérifie calculs, croise sources, score confiance | PostgreSQL HMA SQL, Qdrant KB, Pennylane API |
+| Directeur de Mission | Route, délègue, synthétise | Délégation CrewAI |
+| Expert-Comptable Senior | Chiffres + Social + LODEOM | SQL (7 vues) + Pennylane API + KB Qdrant + mem0 |
+| Juriste Senior | Droit fiscal, sociétés, contrats | KB Qdrant (manuels, réglementation, conventions) + mem0 |
+| Analyste Financier Senior | SIG, ratios, simulations | SQL (vues) + Pennylane API + KB Qdrant + mem0 |
+| Réviseur Qualité | Vérifie calculs, score confiance | SQL + KB Qdrant + Pennylane API + mem0 |
+
+**Outils disponibles** (tous exception-safe, lazy init) :
+- `kb_manuels`, `kb_reglementation`, `kb_conventions`, `kb_pcg_analytique` — RAG LlamaIndex → Qdrant
+- `sql_balance`, `sql_sig`, `sql_bilan`, `sql_bilan_fonctionnel`, `sql_compte_resultat`, `sql_resultat_differentiel`, `sql_ecritures_fec` — NLSQLTableQueryEngine → PostgreSQL HMA
+- `pennylane_trial_balance`, `pennylane_ledger_entries`, `pennylane_ledger_accounts` — API Pennylane directe
+- `memoire_expert_comptable`, `memoire_juriste`, `memoire_analyste`, `memoire_reviseur` — mem0 → Qdrant
+
+**Déploiement** : Coolify (projet `hma-agents`) depuis GitHub `001-agent-ia-comptable`. Env vars injectées via Coolify. Réseaux Docker : `coolify` (partagé avec Qdrant + PostgreSQL).
+
+**Redéploiement manuel** (si nécessaire) :
+```bash
+ssh root@187.124.150.82 "cd /tmp/hmagents-build/hmagents && git pull && docker build -t hmagents:latest . && docker stop hmagents && docker rm hmagents && docker run -d --name hmagents --restart unless-stopped --env-file .env --network coolify -p 8100:8000 hmagents:latest"
+```
 
 **Mémoire structurée** (3 niveaux par agent) :
-- **Long terme** (Qdrant) : outputs passés indexés par similarité — 4 collections `agent_mem_*`
-- **Court terme** (PostgreSQL HMA `agent_session`) : contexte session partagé entre agents
-- **Procédurale** (PostgreSQL HMA `agent_feedback`) : scoring + few-shot injection
+- **Long terme** (mem0 → Qdrant) : outputs passés indexés par similarité — 4 collections `agent_mem_*`
+- **Court terme** (PostgreSQL HMA `agent_session`) : contexte session partagé entre agents — À implémenter
+- **Procédurale** (PostgreSQL HMA `agent_feedback`) : scoring + few-shot injection — À implémenter
 
 **Données (PostgreSQL HMA + Qdrant)** :
 - **dim_calendrier** (PostgreSQL) : table de dimension temporelle (2020-2030), 4 018 jours. Colonnes : `date_jour`, `annee`, `trimestre`, `mois`, `mois_label`, `mois_nom`, `semaine`, `jour_semaine`, `debut_mois`, `fin_mois`
