@@ -1,11 +1,11 @@
-"""Outils LlamaIndex RAG — QueryEngine sur les collections Qdrant KB."""
+"""Outils LlamaIndex RAG — QueryEngine sur les collections Qdrant KB, wrappés pour CrewAI."""
 
 import qdrant_client
 from llama_index.core import VectorStoreIndex, Settings as LlamaSettings
-from llama_index.core.tools import QueryEngineTool, ToolMetadata
 from llama_index.vector_stores.qdrant import QdrantVectorStore
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.openai import OpenAI as LlamaOpenAI
+from crewai.tools import tool
 
 from app.config import settings
 
@@ -23,16 +23,17 @@ embed_model = OpenAIEmbedding(
 LlamaSettings.embed_model = embed_model
 
 # ── Client Qdrant ────────────────────────────────────────────────────
+_is_https = settings.qdrant_url.startswith("https://")
 qclient = qdrant_client.QdrantClient(
     url=settings.qdrant_url,
-    api_key=settings.qdrant_api_key,
+    api_key=settings.qdrant_api_key or None,
     port=settings.qdrant_port,
-    https=True,
+    https=_is_https,
 )
 
 
-def _make_kb_tool(collection_name: str, description: str) -> QueryEngineTool:
-    """Crée un outil RAG sur une collection Qdrant."""
+def _make_query_engine(collection_name: str):
+    """Crée un QueryEngine LlamaIndex sur une collection Qdrant."""
     vector_store = QdrantVectorStore(
         client=qclient,
         collection_name=collection_name,
@@ -41,44 +42,48 @@ def _make_kb_tool(collection_name: str, description: str) -> QueryEngineTool:
         vector_store=vector_store,
         embed_model=embed_model,
     )
-    query_engine = index.as_query_engine(
+    return index.as_query_engine(
         similarity_top_k=10,
         response_mode="tree_summarize",
     )
-    return QueryEngineTool(
-        query_engine=query_engine,
-        metadata=ToolMetadata(
-            name=f"kb_{collection_name}",
-            description=description,
-        ),
-    )
 
 
-# ── 4 outils KB ─────────────────────────────────────────────────────
+# ── QueryEngines (initialisés une fois) ─────────────────────────────
+_qe_manuels = _make_query_engine(settings.kb_manuels)
+_qe_reglementation = _make_query_engine(settings.kb_reglementation)
+_qe_conventions = _make_query_engine(settings.kb_conventions)
+_qe_pcg = _make_query_engine(settings.kb_pcg_analytique)
 
-tool_kb_manuels = _make_kb_tool(
-    settings.kb_manuels,
-    "Recherche dans les manuels DCG/DSCG (comptabilité, fiscalité, droit, finance). "
-    "18 132 documents. Utiliser pour les questions théoriques et normatives.",
-)
 
-tool_kb_reglementation = _make_kb_tool(
-    settings.kb_reglementation,
-    "Recherche dans les textes de loi : Girardin, LODEOM, dispositifs ultramarins. "
-    "Utiliser pour les questions fiscales et réglementaires spécifiques Guyane/DOM.",
-)
+# ── 4 outils KB wrappés pour CrewAI ─────────────────────────────────
 
-tool_kb_conventions = _make_kb_tool(
-    settings.kb_conventions,
-    "Recherche dans les conventions collectives Guyane (Transport, Agroalimentaire). "
-    "Utiliser pour les questions de paie, grilles salariales, indemnités.",
-)
+@tool("kb_manuels")
+def tool_kb_manuels(query: str) -> str:
+    """Recherche dans les manuels DCG/DSCG (comptabilité, fiscalité, droit, finance).
+    18 132 documents. Utiliser pour les questions théoriques et normatives."""
+    return str(_qe_manuels.query(query))
 
-tool_kb_pcg = _make_kb_tool(
-    settings.kb_pcg_analytique,
-    "Recherche dans le mapping des 1 412 comptes PCG avec catégories analytiques "
-    "(SIG, CR, Bilan, BF, V/F). Utiliser pour identifier le rôle d'un compte.",
-)
+
+@tool("kb_reglementation")
+def tool_kb_reglementation(query: str) -> str:
+    """Recherche dans les textes de loi : Girardin, LODEOM, dispositifs ultramarins.
+    Utiliser pour les questions fiscales et réglementaires spécifiques Guyane/DOM."""
+    return str(_qe_reglementation.query(query))
+
+
+@tool("kb_conventions")
+def tool_kb_conventions(query: str) -> str:
+    """Recherche dans les conventions collectives Guyane (Transport, Agroalimentaire).
+    Utiliser pour les questions de paie, grilles salariales, indemnités."""
+    return str(_qe_conventions.query(query))
+
+
+@tool("kb_pcg_analytique")
+def tool_kb_pcg(query: str) -> str:
+    """Recherche dans le mapping des 1 412 comptes PCG avec catégories analytiques
+    (SIG, CR, Bilan, BF, V/F). Utiliser pour identifier le rôle d'un compte."""
+    return str(_qe_pcg.query(query))
+
 
 # Export pour crew.py
 ALL_KB_TOOLS = [tool_kb_manuels, tool_kb_reglementation, tool_kb_conventions, tool_kb_pcg]

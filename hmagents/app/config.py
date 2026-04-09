@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     # Qdrant — stockage vectoriel
     qdrant_url: str = "https://qdrant.hma.business"
     qdrant_api_key: str = ""
-    qdrant_port: int = 443
+    qdrant_port: int = 6333
 
     # PostgreSQL HMA — données comptables
     hma_db_url: str
