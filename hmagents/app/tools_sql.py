@@ -50,49 +50,70 @@ _qe_fec = NLSQLTableQueryEngine(
 def tool_sql_balance(query: str) -> str:
     """Requête SQL sur la balance générale et balance auxiliaire.
     Soldes par compte, entité, exercice et mois."""
-    return str(_qe_balance.query(query))
+    try:
+        return str(_qe_balance.query(query))
+    except Exception as e:
+        return f"Erreur SQL balance : {e}"
 
 
 @tool("sql_sig")
 def tool_sql_sig(query: str) -> str:
     """Requête SQL sur les 9 Soldes Intermédiaires de Gestion + CAF.
     Marge commerciale, Production, VA, EBE, Résultat exploitation, RCAI, etc."""
-    return str(_qe_sig.query(query))
+    try:
+        return str(_qe_sig.query(query))
+    except Exception as e:
+        return f"Erreur SQL sig : {e}"
 
 
 @tool("sql_bilan")
 def tool_sql_bilan(query: str) -> str:
     """Requête SQL sur le bilan comptable. Actif/Passif structurés
     (brut, amortissements, net) par bilan_section et bilan_poste."""
-    return str(_qe_bilan.query(query))
+    try:
+        return str(_qe_bilan.query(query))
+    except Exception as e:
+        return f"Erreur SQL bilan : {e}"
 
 
 @tool("sql_bilan_fonctionnel")
 def tool_sql_bilan_fonctionnel(query: str) -> str:
     """Requête SQL sur le bilan fonctionnel. FRNG, BFR exploitation,
     BFR hors exploitation, Trésorerie nette."""
-    return str(_qe_bf.query(query))
+    try:
+        return str(_qe_bf.query(query))
+    except Exception as e:
+        return f"Erreur SQL bilan_fonctionnel : {e}"
 
 
 @tool("sql_compte_resultat")
 def tool_sql_cr(query: str) -> str:
     """Requête SQL sur le compte de résultat structuré.
     Produits et charges par cr_rubrique avec cr_signe."""
-    return str(_qe_cr.query(query))
+    try:
+        return str(_qe_cr.query(query))
+    except Exception as e:
+        return f"Erreur SQL compte_resultat : {e}"
 
 
 @tool("sql_resultat_differentiel")
 def tool_sql_crd(query: str) -> str:
     """Requête SQL sur le Compte de Résultat Différentiel.
     CA, charges variables, MCV, taux MCV, charges fixes, seuil de rentabilité."""
-    return str(_qe_crd.query(query))
+    try:
+        return str(_qe_crd.query(query))
+    except Exception as e:
+        return f"Erreur SQL resultat_differentiel : {e}"
 
 
 @tool("sql_ecritures_fec")
 def tool_sql_fec(query: str) -> str:
     """Requête SQL sur les écritures comptables FEC et le grand livre.
     25 000+ écritures normalisées. Colonnes : journal_code, ecriture_num, etc."""
-    return str(_qe_fec.query(query))
+    try:
+        return str(_qe_fec.query(query))
+    except Exception as e:
+        return f"Erreur SQL fec : {e}"
 
 
 ALL_SQL_TOOLS = [

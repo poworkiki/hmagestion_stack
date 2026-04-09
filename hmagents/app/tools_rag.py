@@ -61,28 +61,40 @@ _qe_pcg = _make_query_engine(settings.kb_pcg_analytique)
 def tool_kb_manuels(query: str) -> str:
     """Recherche dans les manuels DCG/DSCG (comptabilité, fiscalité, droit, finance).
     18 132 documents. Utiliser pour les questions théoriques et normatives."""
-    return str(_qe_manuels.query(query))
+    try:
+        return str(_qe_manuels.query(query))
+    except Exception as e:
+        return f"Erreur kb_manuels : {e}"
 
 
 @tool("kb_reglementation")
 def tool_kb_reglementation(query: str) -> str:
     """Recherche dans les textes de loi : Girardin, LODEOM, dispositifs ultramarins.
     Utiliser pour les questions fiscales et réglementaires spécifiques Guyane/DOM."""
-    return str(_qe_reglementation.query(query))
+    try:
+        return str(_qe_reglementation.query(query))
+    except Exception as e:
+        return f"Erreur kb_reglementation : {e}"
 
 
 @tool("kb_conventions")
 def tool_kb_conventions(query: str) -> str:
     """Recherche dans les conventions collectives Guyane (Transport, Agroalimentaire).
     Utiliser pour les questions de paie, grilles salariales, indemnités."""
-    return str(_qe_conventions.query(query))
+    try:
+        return str(_qe_conventions.query(query))
+    except Exception as e:
+        return f"Erreur kb_conventions : {e}"
 
 
 @tool("kb_pcg_analytique")
 def tool_kb_pcg(query: str) -> str:
     """Recherche dans le mapping des 1 412 comptes PCG avec catégories analytiques
     (SIG, CR, Bilan, BF, V/F). Utiliser pour identifier le rôle d'un compte."""
-    return str(_qe_pcg.query(query))
+    try:
+        return str(_qe_pcg.query(query))
+    except Exception as e:
+        return f"Erreur kb_pcg : {e}"
 
 
 # Export pour crew.py

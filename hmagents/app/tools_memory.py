@@ -65,28 +65,40 @@ def _format_memories(memories: list[dict]) -> str:
 def tool_mem0_expert_comptable(query: str) -> str:
     """Recherche dans la mémoire long terme de l'Expert-Comptable.
     Retrouve les analyses passées similaires (écritures, révisions, paie)."""
-    return _format_memories(recall("expert_comptable", query))
+    try:
+        return _format_memories(recall("expert_comptable", query))
+    except Exception as e:
+        return f"Erreur mémoire expert_comptable : {e}"
 
 
 @tool("memoire_juriste")
 def tool_mem0_juriste(query: str) -> str:
     """Recherche dans la mémoire long terme du Juriste Senior.
     Retrouve les avis juridiques, montages et articles cités passés."""
-    return _format_memories(recall("juriste", query))
+    try:
+        return _format_memories(recall("juriste", query))
+    except Exception as e:
+        return f"Erreur mémoire juriste : {e}"
 
 
 @tool("memoire_analyste")
 def tool_mem0_analyste(query: str) -> str:
     """Recherche dans la mémoire long terme de l'Analyste Financier.
     Retrouve les analyses SIG, ratios et simulations passées."""
-    return _format_memories(recall("analyste_financier", query))
+    try:
+        return _format_memories(recall("analyste_financier", query))
+    except Exception as e:
+        return f"Erreur mémoire analyste : {e}"
 
 
 @tool("memoire_reviseur")
 def tool_mem0_reviseur(query: str) -> str:
     """Recherche dans la mémoire long terme du Réviseur Qualité.
     Retrouve les patterns d'erreur et alertes détectés."""
-    return _format_memories(recall("reviseur", query))
+    try:
+        return _format_memories(recall("reviseur", query))
+    except Exception as e:
+        return f"Erreur mémoire reviseur : {e}"
 
 
 # Export pour crew.py
