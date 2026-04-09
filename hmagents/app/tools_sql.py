@@ -37,7 +37,7 @@ def tool_sql_balance(query: str) -> str:
     """Requête SQL sur la balance générale et balance auxiliaire.
     Soldes par compte, entité, exercice et mois."""
     try:
-        return str(_get_sql_qe("balance", ["mv_balance_generale", "v_balance_auxiliaire", "entite", "exercice"]).query(query))
+        return str(_get_sql_qe("balance", ["balance_generale", "v_balance", "v_bg_display", "v_balance_auxiliaire", "entite", "exercice"]).query(query))
     except Exception as e:
         return f"Erreur SQL balance : {e}"
 
@@ -97,7 +97,7 @@ def tool_sql_fec(query: str) -> str:
     """Requête SQL sur les écritures comptables FEC et le grand livre.
     25 000+ écritures normalisées. Colonnes : journal_code, ecriture_num, etc."""
     try:
-        return str(_get_sql_qe("fec", ["fec_ecriture", "v_grand_livre", "entite", "exercice", "pcg_analytique"]).query(query))
+        return str(_get_sql_qe("fec", ["grand_livre", "v_grand_livre", "v_gl_display", "entite", "exercice", "pcg_analytique"]).query(query))
     except Exception as e:
         return f"Erreur SQL fec : {e}"
 
