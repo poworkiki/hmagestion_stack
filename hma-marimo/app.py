@@ -130,6 +130,16 @@ def _(annee_list, entite_map):
         label="Periode",
         full_width=True,
     )
+    filtre_mois = mo.ui.dropdown(
+        options=[
+            "Tous",
+            "Jan", "Fev", "Mar", "Avr", "Mai", "Jun",
+            "Jul", "Aou", "Sep", "Oct", "Nov", "Dec",
+        ],
+        value="Tous",
+        label="Mois",
+        full_width=True,
+    )
 
     mo.sidebar(
         [
@@ -140,6 +150,7 @@ def _(annee_list, entite_map):
             filtre_structure,
             filtre_annee,
             filtre_trimestre,
+            filtre_mois,
             mo.md("---"),
             mo.md("### Legende"),
             mo.md(
@@ -153,20 +164,26 @@ def _(annee_list, entite_map):
         ],
         footer=mo.md("**HMA** 2026 · Marimo"),
     )
-    return (filtre_annee, filtre_structure, filtre_trimestre)
+    return (filtre_annee, filtre_mois, filtre_structure, filtre_trimestre)
 
 
 # ── FILTRES (lecture des valeurs — cellule separee) ─────────────
 
 @app.cell(hide_code=True)
-def _(entite_map, filtre_annee, filtre_structure, filtre_trimestre):
+def _(entite_map, filtre_annee, filtre_mois, filtre_structure, filtre_trimestre):
     entite_id = entite_map.get(filtre_structure.value, "")
     entite_nom = filtre_structure.value or ""
     annee = int(filtre_annee.value)
     annee_prev = annee - 1
     trimestre = filtre_trimestre.value
     trim_num = None if trimestre == "Annee" else int(trimestre[1:])
-    return (annee, annee_prev, entite_id, entite_nom, trim_num, trimestre)
+
+    _mois_map = {
+        "Tous": None, "Jan": 1, "Fev": 2, "Mar": 3, "Avr": 4, "Mai": 5, "Jun": 6,
+        "Jul": 7, "Aou": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
+    }
+    mois_num = _mois_map.get(filtre_mois.value)
+    return (annee, annee_prev, entite_id, entite_nom, mois_num, trim_num, trimestre)
 
 
 # ── PAGE 1 : VUE D'ENSEMBLE (KPI + trends) ──────────────────────
@@ -388,14 +405,16 @@ def _(evolution_chart, kpi_row, waterfall):
 # ── PAGE 2 : BALANCE GENERALE ───────────────────────────────────
 
 @app.cell(hide_code=True)
-def _(annee, entite_id):
-    _df_bg = db_query("""
+def _(annee, entite_id, mois_num):
+    _where_mois = "AND mois = %s" if mois_num else ""
+    _params = (entite_id, annee, mois_num) if mois_num else (entite_id, annee)
+    _df_bg = db_query(f"""
         SELECT compte_numero, compte_libelle, classe, mois,
             solde, crd_categorie, bf_categorie
         FROM balance_generale
-        WHERE entite_id = %s::uuid AND annee = %s
+        WHERE entite_id = %s::uuid AND annee = %s {_where_mois}
         ORDER BY compte_numero, mois
-    """, (entite_id, annee))
+    """, _params)
 
     if _df_bg.empty:
         bg_tab = mo.callout("Aucune donnee pour cet exercice.", kind="info")
@@ -486,10 +505,17 @@ def _():
 # ── PAGE 3 : GRAND LIVRE (contenu) ──────────────────────────────
 
 @app.cell(hide_code=True)
-def _(annee, entite_id, gl_filtre_compte):
+def _(annee, entite_id, gl_filtre_compte, mois_num):
     _compte = gl_filtre_compte.value.strip()
-    _where = "AND compte_numero LIKE %s" if _compte else ""
-    _params = (entite_id, annee, f"{_compte}%") if _compte else (entite_id, annee)
+    _parts = []
+    _params_list = [entite_id, annee]
+    if _compte:
+        _parts.append("AND compte_numero LIKE %s")
+        _params_list.append(f"{_compte}%")
+    if mois_num:
+        _parts.append("AND mois = %s")
+        _params_list.append(mois_num)
+    _where = " ".join(_parts)
 
     _df_gl = db_query(f"""
         SELECT ecriture_date, journal_code, ecriture_num,
@@ -500,7 +526,7 @@ def _(annee, entite_id, gl_filtre_compte):
             {_where}
         ORDER BY ecriture_date DESC, ecriture_num
         LIMIT 500
-    """, _params)
+    """, tuple(_params_list))
 
     if _df_gl.empty:
         _content = mo.callout("Aucune ecriture pour ce filtre.", kind="info")
@@ -539,18 +565,25 @@ def _(annee, entite_id, gl_filtre_compte):
 # ── PAGE 4 : CRD DETAILLE ───────────────────────────────────────
 
 @app.cell(hide_code=True)
-def _(annee, entite_id, trim_num):
-    _where_trim = "AND trimestre = %s" if trim_num else ""
-    _params = (entite_id, annee, trim_num) if trim_num else (entite_id, annee)
+def _(annee, entite_id, mois_num, trim_num):
+    _parts = []
+    _params_list = [entite_id, annee]
+    if trim_num:
+        _parts.append("AND trimestre = %s")
+        _params_list.append(trim_num)
+    if mois_num:
+        _parts.append("AND mois = %s")
+        _params_list.append(mois_num)
+    _where = " ".join(_parts)
 
     _df_drill = db_query(f"""
         SELECT crd_categorie, crd_rubrique, compte_numero, compte_libelle,
             SUM(montant) AS montant
         FROM v_crd_drilldown
-        WHERE entite_id = %s::uuid AND annee = %s {_where_trim}
+        WHERE entite_id = %s::uuid AND annee = %s {_where}
         GROUP BY crd_categorie, crd_rubrique, compte_numero, compte_libelle
         ORDER BY crd_categorie, ABS(SUM(montant)) DESC
-    """, _params)
+    """, tuple(_params_list))
 
     if _df_drill.empty:
         crd_tab = mo.callout("Aucune donnee CRD.", kind="info")
