@@ -14,9 +14,9 @@ with app.setup:
 
 
 @app.function
-def query(sql, params=None):
-    DB_URL = os.environ.get("HMA_DB_URL", "")
-    with psycopg2.connect(DB_URL) as conn:
+def db_query(sql, params=None):
+    _DB_URL = os.environ.get("HMA_DB_URL", "")
+    with psycopg2.connect(_DB_URL) as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, params)
             rows = cur.fetchall()
@@ -50,12 +50,12 @@ def _():
     return
 
 
-# ── FILTRES ─────────────────────────────────────────────────────
+# ── FILTRES (creation) ──────────────────────────────────────────
 
 @app.cell(hide_code=True)
 def _():
-    _df_entites = query("SELECT id, code, nom FROM entite ORDER BY nom")
-    _df_annees = query("SELECT DISTINCT annee FROM balance_generale ORDER BY annee DESC")
+    _df_entites = db_query("SELECT id, code, nom FROM entite ORDER BY nom")
+    _df_annees = db_query("SELECT DISTINCT annee FROM balance_generale ORDER BY annee DESC")
     entite_map = {row["nom"]: str(row["id"]) for _, row in _df_entites.iterrows()}
     annee_list = [str(a) for a in _df_annees["annee"].tolist()] if not _df_annees.empty else ["2026"]
 
@@ -77,27 +77,30 @@ def _():
     return (annee_list, entite_map, filtre_annee, filtre_mois, filtre_structure)
 
 
+# ── FILTRES (lecture valeurs — cellule separee) ─────────────────
+
 @app.cell(hide_code=True)
-def _(entite_map, filtre_annee, filtre_structure):
+def _(entite_map, filtre_annee, filtre_structure, filtre_mois):
     entite_id = entite_map.get(filtre_structure.value, "")
     annee = int(filtre_annee.value)
-    return (annee, entite_id)
+    mois_max = filtre_mois.value
+    return (annee, entite_id, mois_max)
 
 
 # ── BALANCE GENERALE ────────────────────────────────────────────
 
 @app.cell(hide_code=True)
-def _(annee, entite_id, filtre_mois):
-    _df_bg = query("""
+def _(annee, entite_id, mois_max):
+    _df_bg = db_query("""
         SELECT compte_numero, compte_libelle, classe, mois, mois_label,
             solde, crd_categorie, sig_solde, bf_categorie
         FROM balance_generale
         WHERE entite_id = %s::uuid AND annee = %s AND mois <= %s
         ORDER BY compte_numero, mois
-    """, (entite_id, annee, filtre_mois.value))
+    """, (entite_id, annee, mois_max))
 
     if _df_bg.empty:
-        _bg_content = mo.md("**Aucune donnee pour cette selection.**")
+        bg_tab = mo.md("**Aucune donnee pour cette selection.**")
     else:
         _resume = _df_bg.groupby("classe").agg(
             solde=("solde", "sum"),
@@ -105,46 +108,50 @@ def _(annee, entite_id, filtre_mois):
         ).reset_index()
         _resume["classe"] = _resume["classe"].astype(str)
 
-        _fig_classes = px.bar(
+        _fig = px.bar(
             _resume, x="classe", y="solde", color="classe",
             title="Solde par classe comptable",
             labels={"solde": "Solde (€)", "classe": "Classe"},
             text_auto=",.0f",
         )
-        _fig_classes.update_layout(showlegend=False, yaxis_tickformat=",", template="plotly_white")
+        _fig.update_layout(showlegend=False, yaxis_tickformat=",", template="plotly_white")
 
-        _bg_content = mo.vstack([
+        bg_tab = mo.vstack([
             mo.md(f"### {_df_bg['compte_numero'].nunique()} comptes — {len(_df_bg)} lignes"),
-            mo.ui.plotly(_fig_classes),
+            mo.ui.plotly(_fig),
             mo.ui.dataframe(_df_bg),
         ])
-
-    bg_tab = _bg_content
     return (bg_tab,)
 
 
-# ── GRAND LIVRE ─────────────────────────────────────────────────
+# ── GRAND LIVRE (filtre compte — creation) ──────────────────────
 
 @app.cell(hide_code=True)
-def _(annee, entite_id, filtre_mois):
+def _():
     gl_filtre_compte = mo.ui.text(
         value="", label="Filtre compte (ex: 411, 60)",
         placeholder="Numero de compte...",
     )
+    return (gl_filtre_compte,)
 
+
+# ── GRAND LIVRE (contenu — lecture valeur) ──────────────────────
+
+@app.cell(hide_code=True)
+def _(annee, entite_id, gl_filtre_compte, mois_max):
     _compte = gl_filtre_compte.value.strip()
-    _where_compte = f"AND compte_numero LIKE '{_compte}%%'" if _compte else ""
+    _where = f"AND compte_numero LIKE '{_compte}%%'" if _compte else ""
 
-    _df_gl = query(f"""
+    _df_gl = db_query(f"""
         SELECT ecriture_date, journal_code, ecriture_numero,
             compte_numero, compte_libelle, piece_ref, libelle,
             debit, credit, (debit - credit) AS solde
         FROM grand_livre
         WHERE entite_id = %s::uuid AND annee = %s AND mois <= %s
-            {_where_compte}
+            {_where}
         ORDER BY ecriture_date, ecriture_numero
         LIMIT 500
-    """, (entite_id, annee, filtre_mois.value))
+    """, (entite_id, annee, mois_max))
 
     if _df_gl.empty:
         gl_tab = mo.vstack([gl_filtre_compte, mo.md("**Aucune ecriture trouvee.**")])
@@ -154,14 +161,14 @@ def _(annee, entite_id, filtre_mois):
             mo.md(f"### {len(_df_gl)} ecritures (limite 500)"),
             mo.ui.dataframe(_df_gl),
         ])
-    return (gl_filtre_compte, gl_tab)
+    return (gl_tab,)
 
 
 # ── CRD ─────────────────────────────────────────────────────────
 
 @app.cell(hide_code=True)
 def _(annee, entite_id):
-    _df_crd = query("""
+    _df_crd = db_query("""
         SELECT * FROM v_crd
         WHERE entite_id = %s::uuid AND annee = %s
         ORDER BY trimestre
@@ -170,22 +177,21 @@ def _(annee, entite_id):
     if _df_crd.empty:
         crd_tab = mo.md("**Aucune donnee CRD.**")
     else:
-        _total = _df_crd.agg({
+        _t = _df_crd.agg({
             "ca": "sum", "charges_variables": "sum", "mcv": "sum",
             "charges_fixes": "sum", "resultat_exploitation": "sum",
             "resultat_financier": "sum", "rcai": "sum",
             "resultat_net": "sum", "caf": "sum",
         })
 
-        # Waterfall
         _labels = ["CA", "- Ch. var.", "MCV", "- Ch. fixes",
                    "Res. exploit.", "Res. fin.", "RCAI", "Res. net"]
         _values = [
-            float(_total["ca"]), -float(_total["charges_variables"]),
-            float(_total["mcv"]), -float(_total["charges_fixes"]),
-            float(_total["resultat_exploitation"]),
-            float(_total["resultat_financier"]),
-            float(_total["rcai"]), float(_total["resultat_net"]),
+            float(_t["ca"]), -float(_t["charges_variables"]),
+            float(_t["mcv"]), -float(_t["charges_fixes"]),
+            float(_t["resultat_exploitation"]),
+            float(_t["resultat_financier"]),
+            float(_t["rcai"]), float(_t["resultat_net"]),
         ]
         _measures = ["absolute", "relative", "total", "relative",
                      "total", "relative", "total", "total"]
@@ -202,7 +208,6 @@ def _(annee, entite_id):
             template="plotly_white", height=420,
         )
 
-        # Evolution trimestrielle
         _fig_trim = px.bar(
             _df_crd, x="trimestre", y=["ca", "mcv", "resultat_net"],
             barmode="group", title="Evolution trimestrielle",
@@ -210,19 +215,19 @@ def _(annee, entite_id):
         )
         _fig_trim.update_layout(yaxis_tickformat=",", template="plotly_white")
 
-        _ca = float(_total["ca"]) if float(_total["ca"]) != 0 else 1
-        _kpi_md = f"""
+        _ca = float(_t["ca"]) if float(_t["ca"]) != 0 else 1
+        _kpi = f"""
 | Indicateur | Montant | % CA |
 |---|---|---|
-| **CA** | {fmt(_total['ca'])} | 100% |
-| **MCV** | {fmt(_total['mcv'])} | {round(float(_total['mcv'])/_ca*100,1)}% |
-| **Res. exploitation** | {fmt(_total['resultat_exploitation'])} | {round(float(_total['resultat_exploitation'])/_ca*100,1)}% |
-| **Resultat net** | {fmt(_total['resultat_net'])} | {round(float(_total['resultat_net'])/_ca*100,1)}% |
-| **CAF** | {fmt(_total['caf'])} | {round(float(_total['caf'])/_ca*100,1)}% |
+| **CA** | {fmt(_t['ca'])} | 100% |
+| **MCV** | {fmt(_t['mcv'])} | {round(float(_t['mcv'])/_ca*100,1)}% |
+| **Res. exploitation** | {fmt(_t['resultat_exploitation'])} | {round(float(_t['resultat_exploitation'])/_ca*100,1)}% |
+| **Resultat net** | {fmt(_t['resultat_net'])} | {round(float(_t['resultat_net'])/_ca*100,1)}% |
+| **CAF** | {fmt(_t['caf'])} | {round(float(_t['caf'])/_ca*100,1)}% |
 """
 
         crd_tab = mo.vstack([
-            mo.md(_kpi_md),
+            mo.md(_kpi),
             mo.ui.plotly(_fig_wf),
             mo.ui.plotly(_fig_trim),
         ])
@@ -233,7 +238,7 @@ def _(annee, entite_id):
 
 @app.cell(hide_code=True)
 def _(annee, entite_id):
-    _df_bf = query("""
+    _df_bf = db_query("""
         SELECT bf_categorie, SUM(montant) AS montant
         FROM v_bilan_fonctionnel
         WHERE entite_id = %s::uuid AND annee = %s
@@ -243,56 +248,39 @@ def _(annee, entite_id):
     if _df_bf.empty:
         bf_tab = mo.md("**Aucune donnee Bilan Fonctionnel.**")
     else:
-        _bf = {row["bf_categorie"]: float(row["montant"]) for _, row in _df_bf.iterrows()}
-        _emplois = _bf.get("emplois_stables", 0)
-        _ressources = _bf.get("ressources_stables", 0)
-        _bfr_e = _bf.get("bfr_exploit", 0)
-        _bfr_he = _bf.get("bfr_hors_exploit", 0)
-        _treso_a = _bf.get("tresorerie_active", 0)
-        _treso_p = _bf.get("tresorerie_passive", 0)
-
-        _frng = _ressources - _emplois
-        _bfr = _bfr_e + _bfr_he
-        _tn = _treso_a - _treso_p
-
+        _bf = {r["bf_categorie"]: float(r["montant"]) for _, r in _df_bf.iterrows()}
+        _frng = _bf.get("ressources_stables", 0) - _bf.get("emplois_stables", 0)
+        _bfr = _bf.get("bfr_exploit", 0) + _bf.get("bfr_hors_exploit", 0)
+        _tn = _bf.get("tresorerie_active", 0) - _bf.get("tresorerie_passive", 0)
         _ok = abs(_frng - (_bfr + _tn)) < 1
-        _verif = "✓ Equilibre verifie" if _ok else f"✗ Ecart : {fmt(abs(_frng - (_bfr + _tn)))}"
+        _verif = "✓ Equilibre" if _ok else f"✗ Ecart: {fmt(abs(_frng - (_bfr + _tn)))}"
 
-        _kpi_bf = f"""
+        _kpi = f"""
 | Indicateur | Montant |
 |---|---|
 | **FRNG** | {fmt(_frng)} |
-| **BFR** | {fmt(_bfr)} (exploit: {fmt(_bfr_e)} / HE: {fmt(_bfr_he)}) |
+| **BFR** | {fmt(_bfr)} |
 | **Tresorerie Nette** | {fmt(_tn)} |
 | **Verification** | {_verif} |
 """
-
-        _labels_bf = {
-            "emplois_stables": "Emplois stables", "ressources_stables": "Ressources stables",
-            "bfr_exploit": "BFR exploit.", "bfr_hors_exploit": "BFR hors exploit.",
-            "tresorerie_active": "Treso. active", "tresorerie_passive": "Treso. passive",
-        }
+        _lbl = {"emplois_stables": "Emplois stables", "ressources_stables": "Ress. stables",
+                "bfr_exploit": "BFR exploit.", "bfr_hors_exploit": "BFR hors exploit.",
+                "tresorerie_active": "Treso. active", "tresorerie_passive": "Treso. passive"}
         _cats = list(_bf.keys())
         _vals = list(_bf.values())
-        _colors = ["#2c5282" if v >= 0 else "#c53030" for v in _vals]
 
-        _fig_bf = go.Figure(go.Bar(
-            x=[_labels_bf.get(c, c) for c in _cats], y=_vals,
-            marker_color=_colors,
+        _fig = go.Figure(go.Bar(
+            x=[_lbl.get(c, c) for c in _cats], y=_vals,
+            marker_color=["#2c5282" if v >= 0 else "#c53030" for v in _vals],
             text=[fmt(v) for v in _vals], textposition="outside",
         ))
-        _fig_bf.update_layout(
-            title="Bilan Fonctionnel", yaxis_tickformat=",",
-            template="plotly_white", height=400,
-        )
+        _fig.update_layout(title="Bilan Fonctionnel", yaxis_tickformat=",",
+                           template="plotly_white", height=400)
 
-        # Drilldown
-        _df_drill = query("""
+        _drill = db_query("""
             SELECT bf_categorie, compte_numero, compte_libelle,
-                SUM(CASE
-                    WHEN bf_categorie IN ('emplois_stables','bfr_exploit','bfr_hors_exploit','tresorerie_active')
-                    THEN debit - credit ELSE credit - debit
-                END) AS montant
+                SUM(CASE WHEN bf_categorie IN ('emplois_stables','bfr_exploit','bfr_hors_exploit','tresorerie_active')
+                    THEN debit - credit ELSE credit - debit END) AS montant
             FROM grand_livre
             WHERE entite_id = %s::uuid AND annee = %s AND bf_categorie IS NOT NULL
             GROUP BY bf_categorie, compte_numero, compte_libelle
@@ -300,18 +288,16 @@ def _(annee, entite_id):
             ORDER BY bf_categorie, ABS(SUM(debit - credit)) DESC
         """, (entite_id, annee))
 
-        _drill_widget = mo.ui.dataframe(_df_drill) if not _df_drill.empty else mo.md("Aucun detail")
-
         bf_tab = mo.vstack([
-            mo.md(_kpi_bf),
-            mo.ui.plotly(_fig_bf),
+            mo.md(_kpi),
+            mo.ui.plotly(_fig),
             mo.md("### Detail par compte"),
-            _drill_widget,
+            mo.ui.dataframe(_drill) if not _drill.empty else mo.md("Aucun detail"),
         ])
     return (bf_tab,)
 
 
-# ── SQL LIBRE ───────────────────────────────────────────────────
+# ── SQL LIBRE (creation textarea) ───────────────────────────────
 
 @app.cell(hide_code=True)
 def _():
@@ -321,25 +307,31 @@ def _():
         rows=6,
         full_width=True,
     )
+    return (sql_input,)
 
-    _sql_text = sql_input.value.strip()
-    if not _sql_text:
-        _sql_result = mo.md("Ecrivez une requete SQL ci-dessus.")
+
+# ── SQL LIBRE (execution — cellule separee) ─────────────────────
+
+@app.cell(hide_code=True)
+def _(sql_input):
+    _sql = sql_input.value.strip()
+    if not _sql:
+        _result = mo.md("Ecrivez une requete SQL ci-dessus.")
     else:
         try:
-            _df_sql = query(_sql_text)
-            _sql_result = mo.vstack([
-                mo.md(f"**{len(_df_sql)} lignes**"),
-                mo.ui.dataframe(_df_sql),
+            _df = db_query(_sql)
+            _result = mo.vstack([
+                mo.md(f"**{len(_df)} lignes**"),
+                mo.ui.dataframe(_df),
             ])
         except Exception as e:
-            _sql_result = mo.md(f"**Erreur SQL** : `{e}`")
+            _result = mo.md(f"**Erreur SQL** : `{e}`")
 
-    sql_tab = mo.vstack([sql_input, _sql_result])
-    return (sql_input, sql_tab)
+    sql_tab = mo.vstack([sql_input, _result])
+    return (sql_tab,)
 
 
-# ── TABS (assemblage) ───────────────────────────────────────────
+# ── TABS (assemblage final) ─────────────────────────────────────
 
 @app.cell(hide_code=True)
 def _(bg_tab, bf_tab, crd_tab, gl_tab, sql_tab):
