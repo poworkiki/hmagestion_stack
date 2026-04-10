@@ -1,0 +1,21 @@
+services:
+  hma-marimo:
+    build: .
+    container_name: hma-marimo
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - HMA_DB_URL=${HMA_DB_URL}
+    networks:
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.hma-marimo.rule=Host(`marimo.hma.business`)"
+      - "traefik.http.routers.hma-marimo.entrypoints=https"
+      - "traefik.http.routers.hma-marimo.tls=true"
+      - "traefik.http.services.hma-marimo.loadbalancer.server.port=8080"
+
+networks:
+  coolify:
+    external: true
