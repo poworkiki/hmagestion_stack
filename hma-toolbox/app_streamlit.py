@@ -68,6 +68,20 @@ exercices_data = query_dicts(
 exercice_options = ['Tous'] + [r['exercice_label'] for r in exercices_data]
 selected_exercice = st.sidebar.selectbox("Exercice", exercice_options)
 
+# Filtre mois
+mois_options = ['Tous']
+if selected_exercice != 'Tous':
+    mois_data = query_dicts(f"""
+        SELECT DISTINCT mois, mois_nom FROM grand_livre
+        WHERE exercice_label = '{selected_exercice}'
+        ORDER BY mois
+    """)
+    mois_options += [f"{d['mois']} - {d['mois_nom']}" for d in mois_data]
+else:
+    mois_data = query_dicts("SELECT DISTINCT mois, mois_nom FROM grand_livre ORDER BY mois")
+    mois_options += [f"{d['mois']} - {d['mois_nom']}" for d in mois_data]
+selected_mois = st.sidebar.selectbox("Mois", mois_options)
+
 # Build WHERE clause
 def build_where():
     clauses = ["1=1"]
@@ -75,6 +89,9 @@ def build_where():
         clauses.append(f"entite_code = '{selected_structure}'")
     if selected_exercice != 'Tous':
         clauses.append(f"exercice_label = '{selected_exercice}'")
+    if selected_mois != 'Tous':
+        mois_num = int(selected_mois.split(' - ')[0])
+        clauses.append(f"mois = {mois_num}")
     return " AND ".join(clauses)
 
 where = build_where()
@@ -98,23 +115,34 @@ st.sidebar.markdown("---")
 st.sidebar.caption("HMA Gestion — Guyane")
 
 
+# --- KPI TOP BAR (toujours visible) ---
+_kpi_ca = query_single(f"SELECT COALESCE(SUM(credit - debit), 0) FROM grand_livre WHERE {where_no_an} AND compte_numero LIKE '70%'")
+_kpi_charges = query_single(f"SELECT COALESCE(SUM(debit - credit), 0) FROM grand_livre WHERE {where_no_an} AND classe = 6")
+_kpi_resultat = float(_kpi_ca or 0) - float(_kpi_charges or 0)
+_kpi_nb = query_single(f"SELECT COUNT(*) FROM grand_livre WHERE {where}")
+
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("CA", fmt(_kpi_ca))
+k2.metric("Charges", fmt(_kpi_charges))
+k3.metric("Resultat", fmt(_kpi_resultat))
+k4.metric("Ecritures", f"{_kpi_nb:,}")
+st.divider()
+
+
 # ==========================================
 # PAGE 1 : TABLEAU DE BORD
 # ==========================================
 if page == "Tableau de bord":
-    st.title(":bar_chart: Tableau de bord")
+    st.subheader("Tableau de bord")
 
-    # KPIs
-    nb_ecritures = query_single(f"SELECT COUNT(*) FROM grand_livre WHERE {where}")
     nb_comptes = query_single(f"SELECT COUNT(DISTINCT compte_numero) FROM grand_livre WHERE {where}")
     total_debit = query_single(f"SELECT COALESCE(SUM(debit), 0) FROM grand_livre WHERE {where}")
     total_credit = query_single(f"SELECT COALESCE(SUM(credit), 0) FROM grand_livre WHERE {where}")
 
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Ecritures", f"{nb_ecritures:,}")
-    c2.metric("Comptes", f"{nb_comptes:,}")
-    c3.metric("Total Debit", fmt(total_debit))
-    c4.metric("Total Credit", fmt(total_credit))
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Comptes", f"{nb_comptes:,}")
+    c2.metric("Total Debit", fmt(total_debit))
+    c3.metric("Total Credit", fmt(total_credit))
 
     # Resultat par structure
     st.subheader("Resultat net par structure")
