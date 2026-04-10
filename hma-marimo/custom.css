@@ -160,16 +160,27 @@ button[class*='download']:hover {
     background: var(--hma-blue) !important;
 }
 
-/* ── Dropdowns Marimo sont des Web Components ── */
-/* On ne peut pas styler leur shadow DOM via CSS externe. */
-/* On les laisse tels quels (fond clair par defaut, texte noir lisible). */
-/* On ajoute juste un contraste avec le fond bleu sombre de la sidebar. */
-aside marimo-dropdown,
-aside marimo-ui-element {
-    background: white;
-    border-radius: 6px;
-    padding: 2px;
-    margin-bottom: 4px;
+/* ── Dropdowns Marimo dans la sidebar ── */
+/* Les dropdowns utilisent des <select> natifs dans des Web Components. */
+/* Forcer le texte en noir pour etre lisible sur fond blanc. */
+aside select,
+aside select option,
+aside [role='combobox'],
+aside marimo-dropdown select,
+aside marimo-ui-element select {
+    color: #1a202c !important;
+    background-color: white !important;
+    border: 1px solid #cbd5e0 !important;
+    border-radius: 6px !important;
+    padding: 6px 10px !important;
+    font-size: 0.9rem !important;
+    font-weight: 500 !important;
+    width: 100% !important;
+}
+
+aside select:focus {
+    border-color: var(--hma-blue-accent) !important;
+    outline: 2px solid rgba(49, 130, 206, 0.3) !important;
 }
 
 /* ── Scrollbar discrete ── */
