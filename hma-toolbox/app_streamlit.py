@@ -146,8 +146,9 @@ div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
 
 # --- KPI TOP BAR (sticky, toujours visible) ---
 _kpi_ca = query_single(f"SELECT COALESCE(SUM(credit - debit), 0) FROM grand_livre WHERE {where_no_an} AND compte_numero LIKE '70%'")
+_kpi_produits = query_single(f"SELECT COALESCE(SUM(credit - debit), 0) FROM grand_livre WHERE {where_no_an} AND classe = 7")
 _kpi_charges = query_single(f"SELECT COALESCE(SUM(debit - credit), 0) FROM grand_livre WHERE {where_no_an} AND classe = 6")
-_kpi_resultat = float(_kpi_ca or 0) - float(_kpi_charges or 0)
+_kpi_resultat_net = float(_kpi_produits or 0) - float(_kpi_charges or 0)
 _kpi_nb = query_single(f"SELECT COUNT(*) FROM grand_livre WHERE {where}")
 
 # Label filtre actif
@@ -159,11 +160,12 @@ if selected_mois != 'Tous':
 
 with st.container():
     st.caption(f"**{_filtre_label}**")
-    k1, k2, k3, k4 = st.columns(4)
+    k1, k2, k3, k4, k5 = st.columns(5)
     k1.metric("CA", fmt(_kpi_ca))
-    k2.metric("Charges", fmt(_kpi_charges))
-    k3.metric("Resultat", fmt(_kpi_resultat))
-    k4.metric("Ecritures", f"{_kpi_nb:,}")
+    k2.metric("Produits", fmt(_kpi_produits))
+    k3.metric("Charges", fmt(_kpi_charges))
+    k4.metric("Resultat net", fmt(_kpi_resultat_net))
+    k5.metric("Ecritures", f"{_kpi_nb:,}")
 st.divider()
 
 
