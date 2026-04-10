@@ -394,6 +394,27 @@ def sync_structure(code, token, cursor, entites, exercices, pcg, cal, full_sync=
         log(f'  batch {batch_num}: {min(i + BATCH_SIZE, len(lines))}/{len(lines)} '
             f'(inseres: {inserted}, skippes: {skipped})')
 
+    # 5. Reconciliation : supprimer les lignes qui n'existent plus dans Pennylane
+    fetched_ids = [line.get('id') for line in lines if line.get('id')]
+    if fetched_ids:
+        cursor.execute("CREATE TEMP TABLE IF NOT EXISTS _sync_ids (pl_id BIGINT PRIMARY KEY)")
+        cursor.execute("TRUNCATE _sync_ids")
+        for b in range(0, len(fetched_ids), 500):
+            batch_ids = fetched_ids[b:b + 500]
+            values = ','.join([f'({pid})' for pid in batch_ids])
+            cursor.execute(f"INSERT INTO _sync_ids (pl_id) VALUES {values} ON CONFLICT DO NOTHING")
+
+        cursor.execute(
+            "DELETE FROM grand_livre WHERE entite_id = %s "
+            "AND pennylane_line_id NOT IN (SELECT pl_id FROM _sync_ids)",
+            (entite['id'],)
+        )
+        deleted = cursor.rowcount
+        cursor.execute("DROP TABLE IF EXISTS _sync_ids")
+
+        if deleted > 0:
+            log(f'  Reconciliation: {deleted} lignes supprimees (absentes de Pennylane)')
+
     log(f'  {code}: {inserted} inseres, {skipped} skippes')
     return inserted
 
