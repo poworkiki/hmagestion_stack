@@ -2,8 +2,13 @@
 pg8000>=1.31
 requests>=2.31
 
-# PCG seed (Pennylane API)
-# (pas de dependance supplementaire)
+# API interne (n8n -> toolbox)
+fastapi>=0.115
+uvicorn>=0.30
+
+# Dashboard checks rapides
+streamlit>=1.40
+streamlit-echarts>=0.6
 
 # Qdrant embeddings
 qdrant-client>=1.9
