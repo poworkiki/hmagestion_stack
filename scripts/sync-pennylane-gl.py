@@ -309,6 +309,16 @@ def sync_structure(code, token, cursor, entites, exercices, pcg, cal, full_sync=
     if full_sync:
         cursor.execute("DELETE FROM grand_livre WHERE entite_id = %s", (entite['id'],))
         log(f'  Purge grand_livre pour {code} (full sync)')
+    else:
+        # Nettoyer les lignes avec faux pennylane_line_id (migrées depuis fec_ecriture)
+        # Les vrais IDs Pennylane sont > 1 000 000 000
+        cursor.execute(
+            "DELETE FROM grand_livre WHERE entite_id = %s AND pennylane_line_id < 1000000000",
+            (entite['id'],)
+        )
+        deleted = cursor.rowcount
+        if deleted:
+            log(f'  Purge {deleted} lignes migrees (faux IDs)')
 
     inserted = 0
     skipped = 0
