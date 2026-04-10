@@ -10,6 +10,18 @@ import streamlit as st
 import pg8000
 from streamlit_echarts import st_echarts, JsCode
 
+def fmt(v):
+    """Format montant : 1 000 000 €"""
+    if v is None:
+        return "0 €"
+    n = float(v)
+    sign = "-" if n < 0 else ""
+    parts = f"{abs(n):,.0f}".replace(",", " ")
+    return f"{sign}{parts} €"
+
+# Format JS ECharts : 1 000 000 €
+JS_FMT = JsCode("function(v){return v.toLocaleString('fr-FR',{maximumFractionDigits:0})+' €'}")
+
 st.set_page_config(
     page_title="HMA Toolbox",
     page_icon=":bar_chart:",
@@ -101,8 +113,8 @@ if page == "Tableau de bord":
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Ecritures", f"{nb_ecritures:,}")
     c2.metric("Comptes", f"{nb_comptes:,}")
-    c3.metric("Total Debit", f"{total_debit:,.0f} EUR")
-    c4.metric("Total Credit", f"{total_credit:,.0f} EUR")
+    c3.metric("Total Debit", fmt(total_debit))
+    c4.metric("Total Credit", fmt(total_credit))
 
     # Resultat par structure
     st.subheader("Resultat net par structure")
@@ -124,7 +136,7 @@ if page == "Tableau de bord":
 
         opts = {
             "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"},
-                        "valueFormatter": JsCode("function(v){return Math.round(v).toLocaleString()+' EUR'}")},
+                        "valueFormatter": JS_FMT},
             "legend": {"bottom": 0},
             "grid": {"bottom": "15%", "containLabel": True},
             "xAxis": {"type": "category", "data": codes},
@@ -161,7 +173,7 @@ if page == "Tableau de bord":
 
         ca_opts = {
             "tooltip": {"trigger": "axis",
-                        "valueFormatter": JsCode("function(v){return Math.round(v).toLocaleString()+' EUR'}")},
+                        "valueFormatter": JS_FMT},
             "xAxis": {"type": "category", "data": mois, "axisLabel": {"rotate": 45}},
             "yAxis": {"type": "value"},
             "dataZoom": [{"type": "inside"}, {"type": "slider", "height": 20, "bottom": 5}],
@@ -217,8 +229,8 @@ elif page == "Balance Generale":
 
         c1, c2, c3 = st.columns(3)
         c1.metric("Comptes", f"{nb_comptes}")
-        c2.metric("Total Debit", f"{total_d:,.0f} EUR")
-        c3.metric("Total Credit", f"{total_c:,.0f} EUR")
+        c2.metric("Total Debit", fmt(total_d))
+        c3.metric("Total Credit", fmt(total_c))
 
         # Table
         st.dataframe(bg_data, use_container_width=True, height=500)
@@ -290,9 +302,9 @@ elif page == "Bilan Comptable":
         total_passif = sum(float(d['net'] or 0) for d in passif)
 
         c1, c2, c3 = st.columns(3)
-        c1.metric("Total Actif Net", f"{total_actif:,.0f} EUR")
-        c2.metric("Total Passif", f"{total_passif:,.0f} EUR")
-        c3.metric("Ecart", f"{total_actif - total_passif:,.0f} EUR")
+        c1.metric("Total Actif Net", fmt(total_actif))
+        c2.metric("Total Passif", fmt(total_passif))
+        c3.metric("Ecart", fmt(total_actif - total_passif))
 
         col1, col2 = st.columns(2)
         with col1:
@@ -359,14 +371,14 @@ elif page == "Bilan Fonctionnel":
         tn = treso_active - treso_passive
 
         c1, c2, c3 = st.columns(3)
-        c1.metric("FRNG", f"{frng:,.0f} EUR", help="Ressources stables - Emplois stables")
-        c2.metric("BFR", f"{bfr:,.0f} EUR", help="BFR exploitation + BFR hors exploitation")
-        c3.metric("Tresorerie Nette", f"{tn:,.0f} EUR", help="Tresorerie active - Tresorerie passive")
+        c1.metric("FRNG", fmt(frng), help="Ressources stables - Emplois stables")
+        c2.metric("BFR", fmt(bfr), help="BFR exploitation + BFR hors exploitation")
+        c3.metric("Tresorerie Nette", fmt(tn), help="Tresorerie active - Tresorerie passive")
 
         # Verification : FRNG = BFR + TN
         ecart_bf = frng - bfr - tn
         if abs(ecart_bf) > 1:
-            st.warning(f"Ecart d'equilibre : FRNG - BFR - TN = {ecart_bf:,.0f} EUR")
+            st.warning(f"Ecart d'equilibre : FRNG - BFR - TN = {fmt(ecart_bf)}")
         else:
             st.success("Equilibre verifie : FRNG = BFR + TN")
 
@@ -377,7 +389,7 @@ elif page == "Bilan Fonctionnel":
 
         opts = {
             "tooltip": {"trigger": "axis",
-                        "valueFormatter": JsCode("function(v){return Math.round(v).toLocaleString()+' EUR'}")},
+                        "valueFormatter": JS_FMT},
             "xAxis": {"type": "category", "data": categories, "axisLabel": {"rotate": 30}},
             "yAxis": {"type": "value"},
             "series": [{"type": "bar", "data": [
@@ -421,8 +433,8 @@ elif page == "Balance Clients":
 
         c1, c2, c3 = st.columns(3)
         c1.metric("Clients", f"{nb_clients}")
-        c2.metric("Solde total", f"{total_solde:,.0f} EUR")
-        c3.metric("Non lettre", f"{total_non_lettre:,.0f} EUR")
+        c2.metric("Solde total", fmt(total_solde))
+        c3.metric("Non lettre", fmt(total_non_lettre))
 
         st.dataframe(clients, use_container_width=True, height=400)
 
@@ -436,7 +448,7 @@ elif page == "Balance Clients":
         if tranches:
             pie_data = [{"name": k, "value": round(abs(v))} for k, v in sorted(tranches.items()) if v != 0]
             opts = {
-                "tooltip": {"trigger": "item", "formatter": "{b}: {c} EUR ({d}%)"},
+                "tooltip": {"trigger": "item", "formatter": JsCode("function(p){return p.name+': '+p.value.toLocaleString('fr-FR')+' € ('+p.percent+'%)'}")},
                 "series": [{"type": "pie", "radius": ["40%", "70%"], "data": pie_data,
                             "itemStyle": {"borderRadius": 8, "borderColor": "#fff", "borderWidth": 2},
                             "label": {"show": True, "formatter": "{b}: {d}%"}}],
@@ -475,8 +487,8 @@ elif page == "Balance Fournisseurs":
 
         c1, c2, c3 = st.columns(3)
         c1.metric("Fournisseurs", f"{nb_fourn}")
-        c2.metric("Solde total", f"{total_solde:,.0f} EUR")
-        c3.metric("Non lettre", f"{total_non_lettre:,.0f} EUR")
+        c2.metric("Solde total", fmt(total_solde))
+        c3.metric("Non lettre", fmt(total_non_lettre))
 
         st.dataframe(fournisseurs, use_container_width=True, height=400)
 
@@ -537,7 +549,7 @@ elif page == "SIG Express":
 
         opts = {
             "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"},
-                        "valueFormatter": JsCode("function(v){return Math.round(v).toLocaleString()+' EUR'}")},
+                        "valueFormatter": JS_FMT},
             "legend": {"bottom": 0},
             "grid": {"left": "3%", "right": "4%", "bottom": "12%", "containLabel": True},
             "yAxis": {"type": "category", "data": sig_soldes},
@@ -552,7 +564,7 @@ elif page == "SIG Express":
                 st.write(f"**{struct}**")
                 rows = [d for d in sig_data if d['entite_code'] == struct]
                 for r in rows:
-                    st.write(f"  {r['sig_solde']}: **{float(r['montant']):,.0f} EUR**")
+                    st.write(f"  {r['sig_solde']}: **{fmt(r['montant'])}**")
 
 
 # ==========================================
@@ -591,10 +603,10 @@ elif page == "CRD Express":
         taux_global = round(total_mcv / total_ca * 100, 1) if total_ca else 0
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("CA", f"{total_ca:,.0f} EUR")
-        c2.metric("MCV", f"{total_mcv:,.0f} EUR")
+        c1.metric("CA", fmt(total_ca))
+        c2.metric("MCV", fmt(total_mcv))
         c3.metric("Taux MCV", f"{taux_global}%")
-        c4.metric("Resultat", f"{total_res:,.0f} EUR")
+        c4.metric("Resultat", fmt(total_res))
 
         # Waterfall-like chart
         labels = ['CA', 'Charges var.', 'MCV', 'Charges fixes', 'Resultat']
@@ -608,7 +620,7 @@ elif page == "CRD Express":
 
         opts = {
             "tooltip": {"trigger": "axis",
-                        "valueFormatter": JsCode("function(v){return Math.round(v).toLocaleString()+' EUR'}")},
+                        "valueFormatter": JS_FMT},
             "xAxis": {"type": "category", "data": labels},
             "yAxis": {"type": "value"},
             "series": [{"type": "bar", "data": waterfall, "label": {"show": True, "position": "top",
@@ -624,9 +636,9 @@ elif page == "CRD Express":
 
         st.subheader("Seuil de rentabilite")
         c1, c2, c3 = st.columns(3)
-        c1.metric("Seuil de rentabilite", f"{seuil:,.0f} EUR")
+        c1.metric("Seuil de rentabilite", fmt(seuil))
         c2.metric("Point mort", f"{point_mort:.0f} jours")
-        c3.metric("Marge de securite", f"{marge_secu:,.0f} EUR",
+        c3.metric("Marge de securite", fmt(marge_secu),
                    delta=f"{round(marge_secu/total_ca*100,1) if total_ca else 0}%")
 
 
