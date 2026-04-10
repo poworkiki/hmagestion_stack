@@ -143,13 +143,13 @@ def _(annee, entite_id, gl_filtre_compte, mois_max):
     _where = f"AND compte_numero LIKE '{_compte}%%'" if _compte else ""
 
     _df_gl = db_query(f"""
-        SELECT ecriture_date, journal_code, ecriture_numero,
-            compte_numero, compte_libelle, piece_ref, libelle,
+        SELECT ecriture_date, journal_code, ecriture_num,
+            compte_numero, compte_libelle, piece_ref, ecriture_lib,
             debit, credit, (debit - credit) AS solde
         FROM grand_livre
         WHERE entite_id = %s::uuid AND annee = %s AND mois <= %s
             {_where}
-        ORDER BY ecriture_date, ecriture_numero
+        ORDER BY ecriture_date, ecriture_num
         LIMIT 500
     """, (entite_id, annee, mois_max))
 
