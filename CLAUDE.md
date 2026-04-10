@@ -194,30 +194,34 @@ On peut aussi exécuter les migrations via SSH sur le VPS : `ssh root@187.124.15
 
 **Rafraîchissement** : `refresh_all_views()` ne rafraîchit que `mv_balance_generale` (seule vue matérialisée). Toutes les autres vues sont simples et se mettent à jour automatiquement.
 
-### ETL Pennylane (sync incrémental)
+### ETL Pennylane → grand_livre
+
+Pipeline : `Pennylane API /ledger_entry_lines → sync-pennylane-gl.py → UPSERT grand_livre → Réconciliation → REFRESH balance_generale`
 
 ```bash
-# Script Python standalone (requiert pg8000, requests)
-python3 scripts/sync-pennylane.py                     # Sync les 4 structures
-python3 scripts/sync-pennylane.py --structure ETPA     # Sync une seule structure
-python3 scripts/sync-pennylane.py --full-sync          # Force re-sync complet
+# Via l'API toolbox (recommandé — depuis n8n ou curl)
+curl -X POST http://hma-toolbox:8000/sync              # Sync 4 structures
+curl -X POST http://hma-toolbox:8000/sync/STIVMAT       # Sync une structure
+curl -X POST http://hma-toolbox:8000/sync-full           # Full sync (purge + re-import)
+curl http://hma-toolbox:8000/status                      # État sync
 
-# Via le conteneur hma-toolbox (Docker, pas besoin de deps locales)
-cd hma-toolbox
-docker compose run toolbox scripts/sync-pennylane.py
-docker compose run toolbox scripts/sync-pennylane.py --structure HMA
-docker compose run toolbox scripts/sync-pennylane.py --full              # Force full fetch
-docker compose run toolbox scripts/sync-pennylane.py --skip-refresh      # Sync sans refresh vues
-docker compose run toolbox scripts/sync-pennylane.py --force-refresh     # Force refresh meme sans changement
-docker compose run toolbox scripts/sync-pennylane.py --endpoints journals ledger_accounts  # Endpoints specifiques
+# Via docker exec sur le conteneur toolbox
+docker exec toolbox-* python /app/scripts/sync-pennylane-gl.py
+docker exec toolbox-* python /app/scripts/sync-pennylane-gl.py --structure ETPA
+docker exec toolbox-* python /app/scripts/sync-pennylane-gl.py --full
+
+# Script local (requiert pg8000, accès réseau Docker)
+python3 scripts/sync-pennylane-gl.py --structure HMA --full
 ```
 
-**Optimisations sync** :
-- **Count check** : compare le nombre de lignes local vs Pennylane avant de syncer — skip si identique
-- **sync_metadata** : table de tracking par structure/endpoint (dernier sync, count, statut)
-- **Refresh conditionnel** : `refresh_views_if_needed()` ne rafraîchit les vues que si des données ont changé
-- **Delta sync** : utilise `updated_since` basé sur le dernier import réussi
-- **Fingerprint MD5** : déduplication via hash unique, `ON CONFLICT DO NOTHING`
+**Fonctionnement du sync** :
+- **UPSERT** : `ON CONFLICT (entite_id, pennylane_line_id) DO UPDATE` — idempotent
+- **Réconciliation** : après l'upsert, supprime les lignes absentes de Pennylane (table temp `_sync_ids`)
+- **Exercice par ligne** : résolu par année de `ecriture_date`, créé automatiquement si manquant
+- **`entite_code`** : renseigné à chaque ligne (colonne dénormalisée)
+- **Refresh auto** : `REFRESH MATERIALIZED VIEW CONCURRENTLY balance_generale` après chaque sync
+
+**⚠️ Points de vigilance** : voir `docs/vigilance-technique.md` pour les leçons apprises (doublons, lignes fantômes, exercices mal affectés)
 
 ### Contrôle de cohérence Pennylane vs GL
 
@@ -231,19 +235,34 @@ Table `pennylane_balance` = snapshot de la trial_balance Pennylane. Vues de cont
 - `v_controle_balance` : compare GL (grand_livre) vs Pennylane (pennylane_balance) par compte
 - `v_controle_resume` : résumé par structure (nb OK, nb écarts, écart total)
 
-### Déploiement workflow n8n
+### hma-toolbox (conteneur Docker)
 
+Image : `hma-toolbox:latest` — buildée sur le VPS. Réseau Docker `coolify`, alias DNS `hma-toolbox`.
+
+```
+hma-toolbox
+├── FastAPI :8000 (API sync, appelée par n8n)
+│   ├── /health, /status
+│   ├── /sync, /sync/{structure}, /sync-full, /sync-full/{structure}
+│   └── /refresh
+├── Streamlit :8501 (dashboard checks rapides)
+│   └── 11 pages : Tableau de bord, BG, Bilan, BF, Clients, Fournisseurs, SIG, CRD, GL, Contrôles, SQL
+└── scripts/sync-pennylane-gl.py
+```
+
+**Accès** : `https://toolbox.hma.business` (Streamlit). API interne : `http://hma-toolbox:8000` (depuis n8n/Docker).
+
+**Rebuild** :
 ```bash
-python3 scripts/deploy-n8n-workflow.py n8n/workflow-sync-pennylane.json   # Déploie via l'API n8n
+ssh root@187.124.150.82 "cd /tmp/hma-toolbox-build && git pull && cd hma-toolbox && docker build -t hma-toolbox:latest . && docker restart toolbox-g4g3tmuip1f6g32sx0tgsxsh"
 ```
 
 ### Workflow n8n
 
-`n8n/workflow-sync-pennylane.json` — workflow de synchronisation Pennylane → PostgreSQL pour les 4 structures.
+`n8n/workflow-sync-pennylane-gl.json` — sync via API toolbox (`POST http://hma-toolbox:8000/sync`).
 - **Cron toutes les 2h** + déclenchement manuel
-- Refresh conditionnel des vues (`refresh_views_if_needed()`)
-- MAJ `sync_metadata` à chaque exécution
-- À importer dans n8n via l'UI ou l'API
+- Check status → Refresh conditionnel → Log erreurs
+- À importer dans n8n via l'UI
 
 ---
 
@@ -514,6 +533,33 @@ Nommage : `analyse-<type>-<YYYY>-<MM>.md` — générés par le skill `/pennylan
 
 ---
 
+## Points de vigilance technique
+
+Voir `docs/vigilance-technique.md` — leçons apprises (sync, doublons, exercices, architecture GL, déploiement toolbox).
+
+**Règles critiques** :
+- `grand_livre` est la **source unique** — `fec_ecriture` a été supprimée, ne jamais la recréer
+- **Solde = Montant** dans les dashboards (jamais débit/crédit séparés, sauf exploration GL)
+- **Format** : `1 000 000 €` (séparateur espace + symbole €)
+- **`NOT is_a_nouveau`** pour toutes les vues P&L (SIG, CRD, CA, résultat)
+- Chaque graphique doit apporter une **information actionnable** — pas de graphique décoratif
+- Toujours **rebuilder l'image Docker** après un push (`docker build + restart`)
+
+---
+
+## Skills Claude Code
+
+| Commande | Périmètre |
+|---|---|
+| `/expert-comptable` | PCG, normes ANC, fiscalité Guyane, écritures types, SIG/CRD, ratios, consolidation |
+| `/data-analyst` | SQL avancé, ETL, window functions, détection anomalies, saisonnalité, Pareto |
+| `/devops-db` | Admin PostgreSQL, VACUUM/tuning, migrations, Docker/Coolify, backup/restore, monitoring |
+| `/pennylane-analyse` | Analyse comptable d'une structure via API Pennylane → rapport .md |
+| `/superset-dashboard` | Création/modification dashboards Superset via API REST |
+| `/appsmith-crud` | Interfaces CRUD Appsmith connectées à PostgreSQL HMA |
+
+---
+
 ## Référentiel formules comptables
 
 `docs/compta_analytique.md` — spécification technique exhaustive (~2 600 lignes) pour l'implémentation des vues SQL :
@@ -613,7 +659,7 @@ curl -sk -X POST https://agents.hma.business/ask \
 
 **Outils disponibles** (tous exception-safe, lazy init) :
 - `kb_manuels`, `kb_reglementation`, `kb_conventions`, `kb_pcg_analytique` — RAG LlamaIndex → Qdrant
-- `sql_balance`, `sql_sig`, `sql_bilan`, `sql_bilan_fonctionnel`, `sql_compte_resultat`, `sql_resultat_differentiel`, `sql_ecritures_fec` — NLSQLTableQueryEngine → PostgreSQL HMA
+- `sql_balance`, `sql_sig`, `sql_bilan`, `sql_bilan_fonctionnel`, `sql_compte_resultat`, `sql_resultat_differentiel`, `sql_ecritures_detail` — NLSQLTableQueryEngine → PostgreSQL HMA
 - `pennylane_trial_balance`, `pennylane_ledger_entries`, `pennylane_ledger_accounts` — API Pennylane directe
 - `memoire_expert_comptable`, `memoire_juriste`, `memoire_analyste`, `memoire_reviseur` — mem0 → Qdrant
 
@@ -636,7 +682,7 @@ ssh root@187.124.150.82 "cd /tmp/hmagents-build/hmagents && git pull && docker b
   - Le CRD s'arrête à l'ordre 6 (Résultat net). Ordres 7-9 = composantes CAF (hors tableau CRD)
 - **pennylane_balance** (PostgreSQL) : snapshot trial_balance Pennylane pour contrôle de cohérence GL vs Pennylane
 - **kb_pcg_analytique** (Qdrant) : même mapping enrichi en texte français pour RAG — dérivé de PostgreSQL, embeddings OpenAI `text-embedding-3-small`
-- **grand_livre** (PostgreSQL) : ~39 000 écritures comptables dénormalisées (source unique), enrichies PCG + calendrier
+- **grand_livre** (PostgreSQL) : ~27 000 écritures comptables dénormalisées (source unique), enrichies PCG + calendrier
 - **Vue matérialisée** (PostgreSQL) : `balance_generale` (agrégation mensuelle par compte). Toutes les autres vues sont simples
 - **v_fec_export** (PostgreSQL) : FEC légal (Art. A.47 A-1 LPF) généré à la demande depuis `grand_livre`
 - **Vues enrichies** (PostgreSQL) : v_sig, v_bilan, v_compte_resultat, v_bilan_fonctionnel, v_balance_generale, v_resultat_differentiel (ajoutent `entite_nom` + `exercice_label`), v_ytd_mensuel/trimestriel/annuel, v_sig_drilldown, v_crd_drilldown (avec `annee`, `trimestre`, `mois_label`)
