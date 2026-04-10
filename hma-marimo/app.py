@@ -3,9 +3,42 @@ import marimo
 __generated_with = "0.13.0"
 app = marimo.App(width="full", app_title="HMA — Exploration Comptable")
 
+with app.setup:
+    import marimo as mo
+    import os
+    import psycopg2
+    import psycopg2.extras
+    import pandas as pd
+    import plotly.express as px
+    import plotly.graph_objects as go
 
-@app.cell
-def _(mo):
+
+@app.function
+def query(sql, params=None):
+    DB_URL = os.environ.get("HMA_DB_URL", "")
+    with psycopg2.connect(DB_URL) as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+            return pd.DataFrame(rows) if rows else pd.DataFrame()
+
+
+@app.function
+def fmt(v):
+    if v is None:
+        return "0 €"
+    n = float(v)
+    if n == 0:
+        return "0 €"
+    sign = "-" if n < 0 else ""
+    parts = f"{abs(n):,.0f}".replace(",", " ")
+    return f"{sign}{parts} €"
+
+
+# ── TITRE ───────────────────────────────────────────────────────
+
+@app.cell(hide_code=True)
+def _():
     mo.md(
         """
         # Exploration Comptable — HMA
@@ -17,59 +50,23 @@ def _(mo):
     return
 
 
-@app.cell
+# ── FILTRES ─────────────────────────────────────────────────────
+
+@app.cell(hide_code=True)
 def _():
-    import marimo as mo
-    import os
-    import psycopg2
-    import psycopg2.extras
-    import pandas as pd
-    import plotly.express as px
-    import plotly.graph_objects as go
-    return go, mo, os, pd, psycopg2, px
+    _df_entites = query("SELECT id, code, nom FROM entite ORDER BY nom")
+    _df_annees = query("SELECT DISTINCT annee FROM balance_generale ORDER BY annee DESC")
+    entite_map = {row["nom"]: str(row["id"]) for _, row in _df_entites.iterrows()}
+    annee_list = [str(a) for a in _df_annees["annee"].tolist()] if not _df_annees.empty else ["2026"]
 
-
-@app.cell
-def _(os, psycopg2):
-    DB_URL = os.environ.get("HMA_DB_URL", "")
-
-    def query(sql, params=None):
-        with psycopg2.connect(DB_URL) as conn:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(sql, params)
-                import pandas as _pd
-                rows = cur.fetchall()
-                return _pd.DataFrame(rows) if rows else _pd.DataFrame()
-
-    def fmt(v):
-        if v is None:
-            return "0 €"
-        sign = "-" if float(v) < 0 else ""
-        parts = f"{abs(float(v)):,.0f}".replace(",", " ")
-        return f"{sign}{parts} €"
-
-    return DB_URL, fmt, query
-
-
-@app.cell
-def _(query):
-    df_entites = query("SELECT id, code, nom FROM entite ORDER BY nom")
-    df_annees = query("SELECT DISTINCT annee FROM balance_generale ORDER BY annee DESC")
-    entite_map = {row["nom"]: str(row["id"]) for _, row in df_entites.iterrows()}
-    annee_list = df_annees["annee"].tolist() if not df_annees.empty else [2026]
-    return annee_list, entite_map
-
-
-@app.cell
-def _(annee_list, entite_map, mo):
     filtre_structure = mo.ui.dropdown(
         options=list(entite_map.keys()),
         value=list(entite_map.keys())[0] if entite_map else None,
         label="Structure",
     )
     filtre_annee = mo.ui.dropdown(
-        options=[str(a) for a in annee_list],
-        value=str(annee_list[0]) if annee_list else "2026",
+        options=annee_list,
+        value=annee_list[0] if annee_list else "2026",
         label="Exercice",
     )
     filtre_mois = mo.ui.slider(
@@ -77,41 +74,21 @@ def _(annee_list, entite_map, mo):
     )
 
     mo.hstack([filtre_structure, filtre_annee, filtre_mois], justify="start", gap=1)
-    return filtre_annee, filtre_mois, filtre_structure
+    return (annee_list, entite_map, filtre_annee, filtre_mois, filtre_structure)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(entite_map, filtre_annee, filtre_structure):
-    _entite_id = entite_map.get(filtre_structure.value, "")
-    _annee = int(filtre_annee.value)
-
-    entite_id = _entite_id
-    annee = _annee
-    return annee, entite_id
-
-
-# ── ONGLETS ─────────────────────────────────────────────────────
-
-@app.cell
-def _(mo):
-    tabs = mo.ui.tabs({
-        "Balance Generale": "bg",
-        "Grand Livre": "gl",
-        "CRD": "crd",
-        "Bilan Fonctionnel": "bf",
-        "SQL Libre": "sql_libre",
-    })
-    tabs
-    return (tabs,)
+    entite_id = entite_map.get(filtre_structure.value, "")
+    annee = int(filtre_annee.value)
+    return (annee, entite_id)
 
 
 # ── BALANCE GENERALE ────────────────────────────────────────────
 
-@app.cell
-def _(annee, entite_id, filtre_mois, mo, pd, px, query, tabs):
-    mo.stop(tabs.value != "bg")
-
-    df_bg = query("""
+@app.cell(hide_code=True)
+def _(annee, entite_id, filtre_mois):
+    _df_bg = query("""
         SELECT compte_numero, compte_libelle, classe, mois, mois_label,
             solde, crd_categorie, sig_solde, bf_categorie
         FROM balance_generale
@@ -119,92 +96,81 @@ def _(annee, entite_id, filtre_mois, mo, pd, px, query, tabs):
         ORDER BY compte_numero, mois
     """, (entite_id, annee, filtre_mois.value))
 
-    if df_bg.empty:
-        mo.md("**Aucune donnee pour cette selection.**")
+    if _df_bg.empty:
+        _bg_content = mo.md("**Aucune donnee pour cette selection.**")
     else:
-        # Resume par classe
-        resume = df_bg.groupby("classe").agg(
+        _resume = _df_bg.groupby("classe").agg(
             solde=("solde", "sum"),
             nb_comptes=("compte_numero", "nunique"),
         ).reset_index()
-        resume["classe"] = resume["classe"].astype(str)
+        _resume["classe"] = _resume["classe"].astype(str)
 
-        fig_classes = px.bar(
-            resume, x="classe", y="solde", color="classe",
+        _fig_classes = px.bar(
+            _resume, x="classe", y="solde", color="classe",
             title="Solde par classe comptable",
             labels={"solde": "Solde (€)", "classe": "Classe"},
             text_auto=",.0f",
         )
-        fig_classes.update_layout(showlegend=False, yaxis_tickformat=",")
+        _fig_classes.update_layout(showlegend=False, yaxis_tickformat=",", template="plotly_white")
 
-        mo.vstack([
-            mo.md(f"### Balance Generale — {df_bg['compte_numero'].nunique()} comptes, {len(df_bg)} lignes"),
-            mo.ui.plotly(fig_classes),
-            mo.ui.dataframe(df_bg),
+        _bg_content = mo.vstack([
+            mo.md(f"### {_df_bg['compte_numero'].nunique()} comptes — {len(_df_bg)} lignes"),
+            mo.ui.plotly(_fig_classes),
+            mo.ui.dataframe(_df_bg),
         ])
-    return
+
+    bg_tab = _bg_content
+    return (bg_tab,)
 
 
 # ── GRAND LIVRE ─────────────────────────────────────────────────
 
-@app.cell
-def _(annee, entite_id, filtre_mois, mo, query, tabs):
-    mo.stop(tabs.value != "gl")
-
-    # Filtre compte
+@app.cell(hide_code=True)
+def _(annee, entite_id, filtre_mois):
     gl_filtre_compte = mo.ui.text(
         value="", label="Filtre compte (ex: 411, 60)",
         placeholder="Numero de compte...",
     )
-    gl_filtre_compte
-    return (gl_filtre_compte,)
 
+    _compte = gl_filtre_compte.value.strip()
+    _where_compte = f"AND compte_numero LIKE '{_compte}%%'" if _compte else ""
 
-@app.cell
-def _(annee, entite_id, filtre_mois, gl_filtre_compte, mo, query, tabs):
-    mo.stop(tabs.value != "gl")
-
-    compte_filter = gl_filtre_compte.value.strip()
-    where_compte = f"AND compte_numero LIKE '{compte_filter}%%'" if compte_filter else ""
-
-    df_gl = query(f"""
+    _df_gl = query(f"""
         SELECT ecriture_date, journal_code, ecriture_numero,
             compte_numero, compte_libelle, piece_ref, libelle,
             debit, credit, (debit - credit) AS solde
         FROM grand_livre
         WHERE entite_id = %s::uuid AND annee = %s AND mois <= %s
-            {where_compte}
+            {_where_compte}
         ORDER BY ecriture_date, ecriture_numero
         LIMIT 500
     """, (entite_id, annee, filtre_mois.value))
 
-    if df_gl.empty:
-        mo.md("**Aucune ecriture trouvee.**")
+    if _df_gl.empty:
+        gl_tab = mo.vstack([gl_filtre_compte, mo.md("**Aucune ecriture trouvee.**")])
     else:
-        mo.vstack([
-            mo.md(f"### Grand Livre — {len(df_gl)} ecritures (limite 500)"),
-            mo.ui.dataframe(df_gl),
+        gl_tab = mo.vstack([
+            gl_filtre_compte,
+            mo.md(f"### {len(_df_gl)} ecritures (limite 500)"),
+            mo.ui.dataframe(_df_gl),
         ])
-    return
+    return (gl_filtre_compte, gl_tab)
 
 
 # ── CRD ─────────────────────────────────────────────────────────
 
-@app.cell
-def _(annee, entite_id, fmt, go, mo, pd, px, query, tabs):
-    mo.stop(tabs.value != "crd")
-
-    df_crd = query("""
+@app.cell(hide_code=True)
+def _(annee, entite_id):
+    _df_crd = query("""
         SELECT * FROM v_crd
         WHERE entite_id = %s::uuid AND annee = %s
         ORDER BY trimestre
     """, (entite_id, annee))
 
-    if df_crd.empty:
-        mo.md("**Aucune donnee CRD.**")
+    if _df_crd.empty:
+        crd_tab = mo.md("**Aucune donnee CRD.**")
     else:
-        # Agreger annee complete
-        total = df_crd.agg({
+        _total = _df_crd.agg({
             "ca": "sum", "charges_variables": "sum", "mcv": "sum",
             "charges_fixes": "sum", "resultat_exploitation": "sum",
             "resultat_financier": "sum", "rcai": "sum",
@@ -212,120 +178,116 @@ def _(annee, entite_id, fmt, go, mo, pd, px, query, tabs):
         })
 
         # Waterfall
-        labels = ["CA", "- Ch. var.", "MCV", "- Ch. fixes",
-                  "Res. exploit.", "Res. fin.", "RCAI", "Res. net"]
-        values = [
-            float(total["ca"]), -float(total["charges_variables"]),
-            float(total["mcv"]), -float(total["charges_fixes"]),
-            float(total["resultat_exploitation"]),
-            float(total["resultat_financier"]),
-            float(total["rcai"]), float(total["resultat_net"]),
+        _labels = ["CA", "- Ch. var.", "MCV", "- Ch. fixes",
+                   "Res. exploit.", "Res. fin.", "RCAI", "Res. net"]
+        _values = [
+            float(_total["ca"]), -float(_total["charges_variables"]),
+            float(_total["mcv"]), -float(_total["charges_fixes"]),
+            float(_total["resultat_exploitation"]),
+            float(_total["resultat_financier"]),
+            float(_total["rcai"]), float(_total["resultat_net"]),
         ]
-        measures = ["absolute", "relative", "total", "relative",
-                    "total", "relative", "total", "total"]
+        _measures = ["absolute", "relative", "total", "relative",
+                     "total", "relative", "total", "total"]
 
-        fig_wf = go.Figure(go.Waterfall(
-            x=labels, y=values, measure=measures,
-            text=[fmt(v) for v in values], textposition="outside",
+        _fig_wf = go.Figure(go.Waterfall(
+            x=_labels, y=_values, measure=_measures,
+            text=[fmt(v) for v in _values], textposition="outside",
             increasing={"marker": {"color": "#38a169"}},
             decreasing={"marker": {"color": "#e53e3e"}},
             totals={"marker": {"color": "#3182ce"}},
         ))
-        fig_wf.update_layout(
+        _fig_wf.update_layout(
             title="Formation du resultat", yaxis_tickformat=",",
-            template="plotly_white", height=400,
+            template="plotly_white", height=420,
         )
 
         # Evolution trimestrielle
-        fig_trim = px.bar(
-            df_crd, x="trimestre", y=["ca", "mcv", "resultat_net"],
+        _fig_trim = px.bar(
+            _df_crd, x="trimestre", y=["ca", "mcv", "resultat_net"],
             barmode="group", title="Evolution trimestrielle",
             labels={"value": "Montant (€)", "trimestre": "Trimestre"},
         )
-        fig_trim.update_layout(yaxis_tickformat=",")
+        _fig_trim.update_layout(yaxis_tickformat=",", template="plotly_white")
 
-        # KPI
-        kpi_md = f"""
-        | Indicateur | Montant | % CA |
-        |---|---|---|
-        | **CA** | {fmt(total['ca'])} | 100% |
-        | **MCV** | {fmt(total['mcv'])} | {round(float(total['mcv'])/float(total['ca'])*100,1) if float(total['ca']) else 0}% |
-        | **Res. exploitation** | {fmt(total['resultat_exploitation'])} | {round(float(total['resultat_exploitation'])/float(total['ca'])*100,1) if float(total['ca']) else 0}% |
-        | **Resultat net** | {fmt(total['resultat_net'])} | {round(float(total['resultat_net'])/float(total['ca'])*100,1) if float(total['ca']) else 0}% |
-        | **CAF** | {fmt(total['caf'])} | {round(float(total['caf'])/float(total['ca'])*100,1) if float(total['ca']) else 0}% |
-        """
+        _ca = float(_total["ca"]) if float(_total["ca"]) != 0 else 1
+        _kpi_md = f"""
+| Indicateur | Montant | % CA |
+|---|---|---|
+| **CA** | {fmt(_total['ca'])} | 100% |
+| **MCV** | {fmt(_total['mcv'])} | {round(float(_total['mcv'])/_ca*100,1)}% |
+| **Res. exploitation** | {fmt(_total['resultat_exploitation'])} | {round(float(_total['resultat_exploitation'])/_ca*100,1)}% |
+| **Resultat net** | {fmt(_total['resultat_net'])} | {round(float(_total['resultat_net'])/_ca*100,1)}% |
+| **CAF** | {fmt(_total['caf'])} | {round(float(_total['caf'])/_ca*100,1)}% |
+"""
 
-        mo.vstack([
-            mo.md("### Compte de Resultat Differentiel"),
-            mo.md(kpi_md),
-            mo.ui.plotly(fig_wf),
-            mo.ui.plotly(fig_trim),
+        crd_tab = mo.vstack([
+            mo.md(_kpi_md),
+            mo.ui.plotly(_fig_wf),
+            mo.ui.plotly(_fig_trim),
         ])
-    return
+    return (crd_tab,)
 
 
 # ── BILAN FONCTIONNEL ───────────────────────────────────────────
 
-@app.cell
-def _(annee, entite_id, fmt, go, mo, px, query, tabs):
-    mo.stop(tabs.value != "bf")
-
-    df_bf = query("""
+@app.cell(hide_code=True)
+def _(annee, entite_id):
+    _df_bf = query("""
         SELECT bf_categorie, SUM(montant) AS montant
         FROM v_bilan_fonctionnel
         WHERE entite_id = %s::uuid AND annee = %s
         GROUP BY bf_categorie
     """, (entite_id, annee))
 
-    if df_bf.empty:
-        mo.md("**Aucune donnee Bilan Fonctionnel.**")
+    if _df_bf.empty:
+        bf_tab = mo.md("**Aucune donnee Bilan Fonctionnel.**")
     else:
-        bf = {row["bf_categorie"]: float(row["montant"]) for _, row in df_bf.iterrows()}
-        emplois = bf.get("emplois_stables", 0)
-        ressources = bf.get("ressources_stables", 0)
-        bfr_e = bf.get("bfr_exploit", 0)
-        bfr_he = bf.get("bfr_hors_exploit", 0)
-        treso_a = bf.get("tresorerie_active", 0)
-        treso_p = bf.get("tresorerie_passive", 0)
+        _bf = {row["bf_categorie"]: float(row["montant"]) for _, row in _df_bf.iterrows()}
+        _emplois = _bf.get("emplois_stables", 0)
+        _ressources = _bf.get("ressources_stables", 0)
+        _bfr_e = _bf.get("bfr_exploit", 0)
+        _bfr_he = _bf.get("bfr_hors_exploit", 0)
+        _treso_a = _bf.get("tresorerie_active", 0)
+        _treso_p = _bf.get("tresorerie_passive", 0)
 
-        frng = ressources - emplois
-        bfr = bfr_e + bfr_he
-        tn = treso_a - treso_p
+        _frng = _ressources - _emplois
+        _bfr = _bfr_e + _bfr_he
+        _tn = _treso_a - _treso_p
 
-        ok = abs(frng - (bfr + tn)) < 1
-        verif = "✓ Equilibre verifie" if ok else f"✗ Ecart : {fmt(abs(frng - (bfr + tn)))}"
+        _ok = abs(_frng - (_bfr + _tn)) < 1
+        _verif = "✓ Equilibre verifie" if _ok else f"✗ Ecart : {fmt(abs(_frng - (_bfr + _tn)))}"
 
-        kpi_bf = f"""
-        | Indicateur | Montant |
-        |---|---|
-        | **FRNG** | {fmt(frng)} |
-        | **BFR** | {fmt(bfr)} |
-        | **Tresorerie Nette** | {fmt(tn)} |
-        | **Verification** | {verif} |
-        """
+        _kpi_bf = f"""
+| Indicateur | Montant |
+|---|---|
+| **FRNG** | {fmt(_frng)} |
+| **BFR** | {fmt(_bfr)} (exploit: {fmt(_bfr_e)} / HE: {fmt(_bfr_he)}) |
+| **Tresorerie Nette** | {fmt(_tn)} |
+| **Verification** | {_verif} |
+"""
 
-        # Bar chart
-        fig_bf = go.Figure()
-        cats = list(bf.keys())
-        vals = list(bf.values())
-        colors = ["#2c5282" if v >= 0 else "#c53030" for v in vals]
-        labels_bf = {
+        _labels_bf = {
             "emplois_stables": "Emplois stables", "ressources_stables": "Ressources stables",
             "bfr_exploit": "BFR exploit.", "bfr_hors_exploit": "BFR hors exploit.",
             "tresorerie_active": "Treso. active", "tresorerie_passive": "Treso. passive",
         }
-        fig_bf.add_trace(go.Bar(
-            x=[labels_bf.get(c, c) for c in cats], y=vals,
-            marker_color=colors,
-            text=[fmt(v) for v in vals], textposition="outside",
+        _cats = list(_bf.keys())
+        _vals = list(_bf.values())
+        _colors = ["#2c5282" if v >= 0 else "#c53030" for v in _vals]
+
+        _fig_bf = go.Figure(go.Bar(
+            x=[_labels_bf.get(c, c) for c in _cats], y=_vals,
+            marker_color=_colors,
+            text=[fmt(v) for v in _vals], textposition="outside",
         ))
-        fig_bf.update_layout(
+        _fig_bf.update_layout(
             title="Bilan Fonctionnel", yaxis_tickformat=",",
             template="plotly_white", height=400,
         )
 
         # Drilldown
-        df_drill = query("""
+        _df_drill = query("""
             SELECT bf_categorie, compte_numero, compte_libelle,
                 SUM(CASE
                     WHEN bf_categorie IN ('emplois_stables','bfr_exploit','bfr_hors_exploit','tresorerie_active')
@@ -338,48 +300,56 @@ def _(annee, entite_id, fmt, go, mo, px, query, tabs):
             ORDER BY bf_categorie, ABS(SUM(debit - credit)) DESC
         """, (entite_id, annee))
 
-        mo.vstack([
-            mo.md("### Bilan Fonctionnel"),
-            mo.md(kpi_bf),
-            mo.ui.plotly(fig_bf),
+        _drill_widget = mo.ui.dataframe(_df_drill) if not _df_drill.empty else mo.md("Aucun detail")
+
+        bf_tab = mo.vstack([
+            mo.md(_kpi_bf),
+            mo.ui.plotly(_fig_bf),
             mo.md("### Detail par compte"),
-            mo.ui.dataframe(df_drill) if not df_drill.empty else mo.md("Aucun detail"),
+            _drill_widget,
         ])
-    return
+    return (bf_tab,)
 
 
 # ── SQL LIBRE ───────────────────────────────────────────────────
 
-@app.cell
-def _(mo, tabs):
-    mo.stop(tabs.value != "sql_libre")
-
+@app.cell(hide_code=True)
+def _():
     sql_input = mo.ui.text_area(
         value="SELECT entite_nom, annee, COUNT(*) AS nb_ecritures\nFROM grand_livre\nGROUP BY entite_nom, annee\nORDER BY entite_nom, annee",
         label="Requete SQL (lecture seule)",
         rows=6,
         full_width=True,
     )
-    sql_input
-    return (sql_input,)
 
-
-@app.cell
-def _(mo, query, sql_input, tabs):
-    mo.stop(tabs.value != "sql_libre")
-
-    sql_text = sql_input.value.strip()
-    if not sql_text:
-        mo.md("Ecrivez une requete SQL ci-dessus.")
+    _sql_text = sql_input.value.strip()
+    if not _sql_text:
+        _sql_result = mo.md("Ecrivez une requete SQL ci-dessus.")
     else:
         try:
-            df_sql = query(sql_text)
-            mo.vstack([
-                mo.md(f"**{len(df_sql)} lignes**"),
-                mo.ui.dataframe(df_sql),
+            _df_sql = query(_sql_text)
+            _sql_result = mo.vstack([
+                mo.md(f"**{len(_df_sql)} lignes**"),
+                mo.ui.dataframe(_df_sql),
             ])
         except Exception as e:
-            mo.md(f"**Erreur SQL** : `{e}`")
+            _sql_result = mo.md(f"**Erreur SQL** : `{e}`")
+
+    sql_tab = mo.vstack([sql_input, _sql_result])
+    return (sql_input, sql_tab)
+
+
+# ── TABS (assemblage) ───────────────────────────────────────────
+
+@app.cell(hide_code=True)
+def _(bg_tab, bf_tab, crd_tab, gl_tab, sql_tab):
+    mo.ui.tabs({
+        "Balance Generale": bg_tab,
+        "Grand Livre": gl_tab,
+        "CRD": crd_tab,
+        "Bilan Fonctionnel": bf_tab,
+        "SQL Libre": sql_tab,
+    })
     return
 
 
