@@ -1,0 +1,21 @@
+services:
+  hma-dashboard:
+    build: .
+    container_name: hma-dashboard
+    restart: unless-stopped
+    ports:
+      - "8050:8050"
+    environment:
+      - HMA_DB_URL=${HMA_DB_URL}
+    networks:
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.hma-dashboard.rule=Host(`dashboard.hma.business`)"
+      - "traefik.http.routers.hma-dashboard.entrypoints=https"
+      - "traefik.http.routers.hma-dashboard.tls=true"
+      - "traefik.http.services.hma-dashboard.loadbalancer.server.port=8050"
+
+networks:
+  coolify:
+    external: true

@@ -1,0 +1,188 @@
+/* Dashboard CRD — Styles custom */
+
+:root {
+    --hma-blue: #1a365d;
+    --hma-blue-light: #2c5282;
+    --hma-green: #22543d;
+    --hma-red: #9b2c2c;
+    --hma-gray: #718096;
+    --hma-bg: #f7fafc;
+    --hma-card-bg: #ffffff;
+}
+
+body {
+    background-color: var(--hma-bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* ── Sidebar filtres ── */
+.sidebar {
+    background-color: var(--hma-blue);
+    color: white;
+    min-height: 100vh;
+    padding: 1.5rem 1rem;
+}
+
+.sidebar h4 {
+    color: white;
+    font-size: 1.1rem;
+    margin-bottom: 1.5rem;
+}
+
+.sidebar label {
+    color: #e2e8f0;
+    font-size: 0.85rem;
+    margin-bottom: 0.25rem;
+}
+
+/* ── KPI Cards ── */
+.kpi-card {
+    background: var(--hma-card-bg);
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.kpi-card .kpi-title {
+    font-size: 0.8rem;
+    color: var(--hma-gray);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+}
+
+.kpi-card .kpi-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--hma-blue);
+}
+
+.kpi-card .kpi-pct {
+    font-size: 0.85rem;
+    color: var(--hma-gray);
+}
+
+.kpi-card .kpi-delta-up {
+    color: var(--hma-green);
+    font-size: 0.85rem;
+}
+
+.kpi-card .kpi-delta-down {
+    color: var(--hma-red);
+    font-size: 0.85rem;
+}
+
+/* ── Tableau CRD ── */
+.crd-table {
+    background: var(--hma-card-bg);
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 1rem;
+}
+
+.crd-row {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #e2e8f0;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.crd-row:hover {
+    background-color: #edf2f7;
+}
+
+.crd-row.subtotal {
+    font-weight: 700;
+    background-color: #f7fafc;
+}
+
+.crd-row.drilldown-1 {
+    padding-left: 2rem;
+    font-size: 0.9rem;
+    color: #4a5568;
+}
+
+.crd-row.drilldown-2 {
+    padding-left: 3.5rem;
+    font-size: 0.85rem;
+    color: var(--hma-gray);
+}
+
+.crd-label {
+    flex: 1;
+}
+
+.crd-montant {
+    width: 120px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.crd-pct {
+    width: 70px;
+    text-align: right;
+    color: var(--hma-gray);
+    font-size: 0.85rem;
+}
+
+.crd-bar {
+    width: 100px;
+    margin-left: 0.5rem;
+}
+
+.crd-bar-inner {
+    height: 8px;
+    border-radius: 4px;
+    background-color: var(--hma-blue-light);
+    transition: width 0.3s;
+}
+
+/* ── Section seuil ── */
+.seuil-section {
+    background: #fffff0;
+    border: 1px solid #ecc94b;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+
+/* ── Graphiques ── */
+.chart-card {
+    background: var(--hma-card-bg);
+    border-radius: 8px;
+    padding: 1rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    margin-bottom: 1rem;
+}
+
+/* ── Responsive mobile ── */
+@media (max-width: 768px) {
+    .sidebar {
+        min-height: auto;
+        padding: 1rem;
+    }
+
+    .kpi-card .kpi-value {
+        font-size: 1.2rem;
+    }
+
+    .crd-bar {
+        display: none;
+    }
+
+    .crd-montant {
+        width: 90px;
+        font-size: 0.85rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .crd-pct {
+        display: none;
+    }
+}
