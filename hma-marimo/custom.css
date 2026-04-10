@@ -1,186 +1,415 @@
 /* ═══════════════════════════════════════════════════════════════
-   HMA — Exploration Comptable — Theme custom Marimo
+   HMA — Theme Light Modern (inspire Stripe / Linear / Notion)
+   Fond clair, sidebar blanche, accents bleus, typography moderne
    ═══════════════════════════════════════════════════════════════ */
 
 :root {
-    --hma-blue: #1a365d;
-    --hma-blue-light: #2c5282;
-    --hma-blue-accent: #3182ce;
-    --hma-green: #276749;
-    --hma-red: #c53030;
-    --hma-orange: #c05621;
-    --hma-gray: #718096;
-    --hma-bg: #f7fafc;
-    --hma-card-bg: #ffffff;
-    --hma-border: #e2e8f0;
-    --hma-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-    --hma-radius: 10px;
+    /* Palette */
+    --hma-primary: #3b5bdb;          /* Bleu principal */
+    --hma-primary-dark: #2541b2;
+    --hma-primary-light: #edf2ff;
+    --hma-accent: #5c7cfa;
+    --hma-success: #12b886;
+    --hma-danger: #f03e3e;
+    --hma-warning: #f59f00;
+
+    /* Neutres */
+    --hma-text: #212529;
+    --hma-text-muted: #6c757d;
+    --hma-text-light: #adb5bd;
+    --hma-bg: #f8f9fb;
+    --hma-card: #ffffff;
+    --hma-border: #e9ecef;
+    --hma-border-strong: #ced4da;
+
+    /* Effets */
+    --hma-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
+    --hma-shadow: 0 1px 3px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04);
+    --hma-shadow-lg: 0 10px 20px rgba(16, 24, 40, 0.08), 0 2px 6px rgba(16, 24, 40, 0.04);
+    --hma-radius: 8px;
+    --hma-radius-lg: 12px;
 }
 
 /* ── Fond general ── */
 body {
     background-color: var(--hma-bg);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    color: #2d3748;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: var(--hma-text);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
-/* ── Titre principal (h1) ── */
+/* ── Titres ── */
 h1 {
-    color: var(--hma-blue) !important;
+    color: var(--hma-text) !important;
     font-weight: 800 !important;
-    font-size: 1.8rem !important;
-    padding-bottom: 0.6rem;
-    border-bottom: 3px solid var(--hma-blue-accent);
-    margin-bottom: 1.2rem !important;
+    font-size: 1.875rem !important;
+    letter-spacing: -0.025em;
+    line-height: 1.2 !important;
+    margin-bottom: 0.5rem !important;
 }
 
-h2, h3 {
-    color: var(--hma-blue-light) !important;
+h1 + p,
+h1 ~ .paragraph {
+    color: var(--hma-text-muted) !important;
+    font-size: 0.95rem;
+}
+
+h2 {
+    color: var(--hma-text) !important;
     font-weight: 700 !important;
+    font-size: 1.375rem !important;
+    letter-spacing: -0.02em;
+    margin-top: 1.5rem !important;
 }
 
 h3 {
-    font-size: 1.05rem !important;
-    margin-top: 1rem !important;
-    margin-bottom: 0.6rem !important;
-    padding-bottom: 0.3rem;
+    color: var(--hma-text) !important;
+    font-weight: 600 !important;
+    font-size: 1.0625rem !important;
+    letter-spacing: -0.01em;
+    margin-top: 1.75rem !important;
+    margin-bottom: 0.75rem !important;
+    padding-bottom: 0.5rem;
     border-bottom: 1px solid var(--hma-border);
 }
 
-/* ── Sidebar ── */
-[data-cell-role='sidebar'],
-.marimo-sidebar,
-aside {
-    background: linear-gradient(180deg, var(--hma-blue) 0%, #0f2440 100%) !important;
-    color: white !important;
-    min-width: 220px;
+/* ── SIDEBAR (light, style Linear) ── */
+aside,
+aside.app-sidebar {
+    background: var(--hma-card) !important;
+    border-right: 1px solid var(--hma-border) !important;
+    color: var(--hma-text) !important;
+    box-shadow: var(--hma-shadow-sm);
 }
 
-aside h1, aside h2, aside h3, aside h4 {
-    color: white !important;
+aside h1 {
+    font-size: 1.25rem !important;
+    font-weight: 800 !important;
+    color: var(--hma-primary) !important;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.25rem !important;
+}
+
+aside h3 {
+    color: var(--hma-text-muted) !important;
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
     border: none !important;
+    padding: 0;
+    margin-top: 1.25rem !important;
+    margin-bottom: 0.5rem !important;
+}
+
+aside strong {
+    color: var(--hma-text) !important;
+    font-weight: 600;
+}
+
+aside p,
+aside .paragraph,
+aside li {
+    color: var(--hma-text) !important;
+    font-size: 0.82rem;
+    line-height: 1.5;
+}
+
+aside em {
+    color: var(--hma-text-muted) !important;
+    font-style: normal;
+    font-size: 0.75rem;
+}
+
+aside hr {
+    border: none;
+    border-top: 1px solid var(--hma-border);
+    margin: 1rem 0;
+}
+
+aside ul {
+    padding-left: 1rem;
+    margin: 0.25rem 0;
+}
+
+aside li {
+    margin-bottom: 0.35rem;
+    font-size: 0.8rem;
+}
+
+/* ── Dropdowns Marimo dans la sidebar ── */
+aside select,
+aside [role="combobox"] {
+    color: var(--hma-text) !important;
+    background-color: var(--hma-card) !important;
+    border: 1px solid var(--hma-border-strong) !important;
+    border-radius: var(--hma-radius) !important;
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.88rem !important;
+    font-weight: 500 !important;
+    width: 100% !important;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+aside select:hover,
+aside [role="combobox"]:hover {
+    border-color: var(--hma-accent) !important;
+}
+
+aside select:focus,
+aside [role="combobox"]:focus {
+    border-color: var(--hma-primary) !important;
+    outline: none !important;
+    box-shadow: 0 0 0 3px var(--hma-primary-light) !important;
 }
 
 aside label,
 aside .marimo-label {
-    color: #cbd5e0 !important;
-    font-size: 0.78rem !important;
+    color: var(--hma-text-muted) !important;
+    font-size: 0.72rem !important;
     font-weight: 600 !important;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.06em;
+    margin-bottom: 0.35rem !important;
+    display: block;
 }
 
-aside a,
-aside p,
-aside li {
-    color: #e2e8f0 !important;
-}
-
-aside hr {
-    border-color: rgba(255, 255, 255, 0.15) !important;
+/* ── Footer sidebar ── */
+aside [class*="footer"],
+aside > div:last-child {
+    color: var(--hma-text-muted) !important;
+    font-size: 0.75rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--hma-border);
 }
 
 /* ── KPI stats (mo.stat) ── */
 .marimo-stat {
-    background: var(--hma-card-bg) !important;
-    border-radius: var(--hma-radius) !important;
-    padding: 1.1rem 1rem !important;
-    box-shadow: var(--hma-shadow) !important;
-    border: none !important;
-    border-top: 3px solid var(--hma-blue-accent) !important;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    background: var(--hma-card) !important;
+    border: 1px solid var(--hma-border) !important;
+    border-radius: var(--hma-radius-lg) !important;
+    padding: 1.25rem !important;
+    box-shadow: var(--hma-shadow-sm) !important;
+    transition: all 0.2s ease;
 }
 
 .marimo-stat:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1) !important;
+    border-color: var(--hma-accent) !important;
+    box-shadow: var(--hma-shadow-lg) !important;
+    transform: translateY(-1px);
 }
 
 .marimo-stat-label {
-    color: var(--hma-gray) !important;
+    color: var(--hma-text-muted) !important;
+    font-size: 0.75rem !important;
+    font-weight: 600 !important;
     text-transform: uppercase;
-    font-size: 0.72rem !important;
-    letter-spacing: 0.08em;
-    font-weight: 600;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.5rem !important;
 }
 
 .marimo-stat-value {
-    color: var(--hma-blue) !important;
+    color: var(--hma-text) !important;
     font-weight: 800 !important;
+    font-size: 1.5rem !important;
     font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    line-height: 1.2 !important;
 }
 
-/* ── Tableaux ── */
-.marimo-table thead th {
-    background-color: var(--hma-bg) !important;
-    color: var(--hma-blue) !important;
-    font-size: 0.78rem !important;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-weight: 700;
-    border-bottom: 2px solid var(--hma-border) !important;
+/* Tendances */
+.marimo-stat [class*="caption"],
+.marimo-stat [class*="increase"],
+.marimo-stat [class*="decrease"] {
+    font-size: 0.75rem !important;
+    font-weight: 600;
+    margin-top: 0.35rem;
 }
 
-.marimo-table tbody tr:hover {
-    background-color: #edf2f7 !important;
+/* ── Cards de contenu ── */
+.chart-card,
+[class*="altair"],
+[class*="vega"] {
+    background: var(--hma-card);
+    border-radius: var(--hma-radius-lg);
+    padding: 1rem;
+    box-shadow: var(--hma-shadow-sm);
+    border: 1px solid var(--hma-border);
+    margin-bottom: 1rem;
 }
 
 /* ── Tabs ── */
-button[role='tab'] {
-    font-weight: 600 !important;
-    font-size: 0.9rem !important;
-    color: var(--hma-gray) !important;
-    padding: 0.75rem 1.25rem !important;
+[role="tablist"] {
+    border-bottom: 1px solid var(--hma-border) !important;
+    gap: 0 !important;
+    margin-bottom: 1.5rem !important;
 }
 
-button[role='tab'][aria-selected='true'] {
-    color: var(--hma-blue) !important;
-    border-bottom: 3px solid var(--hma-blue-accent) !important;
+button[role="tab"] {
+    font-weight: 500 !important;
+    font-size: 0.88rem !important;
+    color: var(--hma-text-muted) !important;
+    padding: 0.75rem 1.25rem !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    background: transparent !important;
+    transition: all 0.15s ease;
+    letter-spacing: -0.01em;
+}
+
+button[role="tab"]:hover {
+    color: var(--hma-text) !important;
+    background: var(--hma-bg) !important;
+}
+
+button[role="tab"][aria-selected="true"] {
+    color: var(--hma-primary) !important;
+    border-bottom-color: var(--hma-primary) !important;
+    font-weight: 600 !important;
+    background: transparent !important;
+}
+
+/* ── Tableaux ── */
+.marimo-table {
+    background: var(--hma-card);
+    border-radius: var(--hma-radius-lg);
+    overflow: hidden;
+    border: 1px solid var(--hma-border);
+    box-shadow: var(--hma-shadow-sm);
+}
+
+.marimo-table table {
+    font-size: 0.85rem !important;
+}
+
+.marimo-table thead th {
+    background-color: var(--hma-bg) !important;
+    color: var(--hma-text-muted) !important;
+    font-size: 0.72rem !important;
+    font-weight: 600 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.75rem 1rem !important;
+    border-bottom: 1px solid var(--hma-border) !important;
+}
+
+.marimo-table tbody td {
+    padding: 0.75rem 1rem !important;
+    border-bottom: 1px solid var(--hma-border) !important;
+    color: var(--hma-text) !important;
+}
+
+.marimo-table tbody tr:hover {
+    background-color: var(--hma-bg) !important;
+}
+
+.marimo-table tbody tr:last-child td {
+    border-bottom: none !important;
 }
 
 /* ── Callouts ── */
 .marimo-callout {
+    border-radius: var(--hma-radius-lg) !important;
+    border: 1px solid var(--hma-border) !important;
+    border-left: 4px solid var(--hma-primary) !important;
+    box-shadow: var(--hma-shadow-sm);
+    padding: 1rem 1.25rem !important;
+}
+
+/* ── Boutons ── */
+button:not([role="tab"]):not([class*="tab"]),
+a[download] {
+    background: var(--hma-primary) !important;
+    color: white !important;
+    border: none !important;
     border-radius: var(--hma-radius) !important;
-    border-left-width: 4px !important;
+    font-weight: 600 !important;
+    font-size: 0.85rem !important;
+    padding: 0.55rem 1rem !important;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    box-shadow: var(--hma-shadow-sm);
+}
+
+button:not([role="tab"]):not([class*="tab"]):hover {
+    background: var(--hma-primary-dark) !important;
+    transform: translateY(-1px);
     box-shadow: var(--hma-shadow);
 }
 
-/* ── Boutons download ── */
-button[class*='download'],
-a[download] {
-    background: var(--hma-blue-accent) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 6px !important;
-    font-weight: 600 !important;
-    padding: 0.5rem 1rem !important;
+/* Exception : boutons de la sidebar (collapse) */
+aside button {
+    background: transparent !important;
+    color: var(--hma-text-muted) !important;
+    box-shadow: none !important;
+    padding: 0.4rem !important;
 }
 
-button[class*='download']:hover {
-    background: var(--hma-blue) !important;
+aside button:hover {
+    background: var(--hma-bg) !important;
+    color: var(--hma-text) !important;
+    transform: none !important;
 }
 
-/* ── Dropdowns Marimo dans la sidebar ── */
-/* Les dropdowns utilisent des <select> natifs dans des Web Components. */
-/* Forcer le texte en noir pour etre lisible sur fond blanc. */
-aside select,
-aside select option,
-aside [role='combobox'],
-aside marimo-dropdown select,
-aside marimo-ui-element select {
-    color: #1a202c !important;
-    background-color: white !important;
-    border: 1px solid #cbd5e0 !important;
-    border-radius: 6px !important;
-    padding: 6px 10px !important;
-    font-size: 0.9rem !important;
-    font-weight: 500 !important;
-    width: 100% !important;
+/* ── Input text / textarea ── */
+input[type="text"],
+textarea,
+.marimo-text-area textarea,
+[class*="text-area"] textarea {
+    background: var(--hma-card) !important;
+    border: 1px solid var(--hma-border-strong) !important;
+    border-radius: var(--hma-radius) !important;
+    padding: 0.55rem 0.85rem !important;
+    font-size: 0.88rem !important;
+    color: var(--hma-text) !important;
+    font-family: inherit;
+    transition: all 0.15s ease;
 }
 
-aside select:focus {
-    border-color: var(--hma-blue-accent) !important;
-    outline: 2px solid rgba(49, 130, 206, 0.3) !important;
+input[type="text"]:focus,
+textarea:focus {
+    border-color: var(--hma-primary) !important;
+    outline: none !important;
+    box-shadow: 0 0 0 3px var(--hma-primary-light) !important;
+}
+
+/* Textarea SQL — police monospace */
+.marimo-text-area textarea,
+[class*="code-editor"] textarea {
+    font-family: "JetBrains Mono", "Fira Code", "SF Mono", Menlo, Monaco, Consolas, monospace !important;
+    font-size: 0.82rem !important;
+}
+
+/* ── Texte Markdown du contenu principal ── */
+main p,
+main .paragraph {
+    color: var(--hma-text);
+    line-height: 1.65;
+    font-size: 0.92rem;
+}
+
+main ul li,
+main ol li {
+    color: var(--hma-text);
+    line-height: 1.6;
+}
+
+main strong {
+    color: var(--hma-text);
+    font-weight: 600;
+}
+
+main hr {
+    border: none;
+    border-top: 1px solid var(--hma-border);
+    margin: 2rem 0;
+}
+
+/* ── Separators ── */
+hr {
+    border: none;
+    border-top: 1px solid var(--hma-border);
+    margin: 1.5rem 0;
 }
 
 /* ── Scrollbar discrete ── */
@@ -194,21 +423,10 @@ aside select:focus {
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #cbd5e0;
+    background: var(--hma-border-strong);
     border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--hma-gray);
-}
-
-/* ── Texte Markdown ── */
-p {
-    line-height: 1.6;
-}
-
-hr {
-    border: none;
-    border-top: 1px solid var(--hma-border);
-    margin: 1.5rem 0;
+    background: var(--hma-text-light);
 }
