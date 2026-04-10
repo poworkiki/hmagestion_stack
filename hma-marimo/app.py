@@ -96,7 +96,7 @@ def _():
     return
 
 
-# ── FILTRES (creation UI) ───────────────────────────────────────
+# ── CHARGEMENT DES OPTIONS (cellule separee, pas d'UI) ──────────
 
 @app.cell(hide_code=True)
 def _():
@@ -105,7 +105,13 @@ def _():
 
     entite_map = {row["nom"]: str(row["id"]) for _, row in _df_entites.iterrows()}
     annee_list = [int(a) for a in _df_annees["annee"].tolist()] if not _df_annees.empty else [2026]
+    return (annee_list, entite_map)
 
+
+# ── FILTRES + SIDEBAR (dans la meme cellule) ────────────────────
+
+@app.cell(hide_code=True)
+def _(annee_list, entite_map):
     filtre_structure = mo.ui.dropdown(
         options=list(entite_map.keys()),
         value=list(entite_map.keys())[0] if entite_map else None,
@@ -124,26 +130,7 @@ def _():
         label="Periode",
         full_width=True,
     )
-    return (annee_list, entite_map, filtre_annee, filtre_structure, filtre_trimestre)
 
-
-# ── FILTRES (lecture des valeurs) ───────────────────────────────
-
-@app.cell(hide_code=True)
-def _(entite_map, filtre_annee, filtre_structure, filtre_trimestre):
-    entite_id = entite_map.get(filtre_structure.value, "")
-    entite_nom = filtre_structure.value or ""
-    annee = int(filtre_annee.value)
-    annee_prev = annee - 1
-    trimestre = filtre_trimestre.value
-    trim_num = None if trimestre == "Annee" else int(trimestre[1:])
-    return (annee, annee_prev, entite_id, entite_nom, trim_num, trimestre)
-
-
-# ── SIDEBAR ─────────────────────────────────────────────────────
-
-@app.cell(hide_code=True)
-def _(filtre_annee, filtre_structure, filtre_trimestre):
     mo.sidebar(
         [
             mo.md("# HMA"),
@@ -156,18 +143,30 @@ def _(filtre_annee, filtre_structure, filtre_trimestre):
             mo.md("---"),
             mo.md("### Legende"),
             mo.md(
-                "- **Solde** = montant net (debit - credit)\n"
+                "- **Solde** = montant net\n"
                 "- **N-1** = exercice precedent\n"
                 "- **CRD** = Compte de Resultat Differentiel\n"
                 "- **BF** = Bilan Fonctionnel"
             ),
             mo.md("---"),
             mo.md("_Source : PostgreSQL HMA_"),
-            mo.md("_Vues : v_crd, v_sig, v_bilan_fonctionnel, balance_generale_"),
         ],
         footer=mo.md("**HMA** 2026 · Marimo"),
     )
-    return
+    return (filtre_annee, filtre_structure, filtre_trimestre)
+
+
+# ── FILTRES (lecture des valeurs — cellule separee) ─────────────
+
+@app.cell(hide_code=True)
+def _(entite_map, filtre_annee, filtre_structure, filtre_trimestre):
+    entite_id = entite_map.get(filtre_structure.value, "")
+    entite_nom = filtre_structure.value or ""
+    annee = int(filtre_annee.value)
+    annee_prev = annee - 1
+    trimestre = filtre_trimestre.value
+    trim_num = None if trimestre == "Annee" else int(trimestre[1:])
+    return (annee, annee_prev, entite_id, entite_nom, trim_num, trimestre)
 
 
 # ── PAGE 1 : VUE D'ENSEMBLE (KPI + trends) ──────────────────────
