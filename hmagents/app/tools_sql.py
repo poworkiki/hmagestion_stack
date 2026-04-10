@@ -117,18 +117,18 @@ def tool_sql_crd(query: str) -> str:
         return f"Erreur SQL resultat_differentiel : {e}"
 
 
-@tool("sql_ecritures_fec")
-def tool_sql_fec(query: str) -> str:
-    """Requête SQL sur les écritures comptables FEC (table legacy).
-    Utiliser sql_grand_livre de préférence pour les nouvelles requêtes."""
+@tool("sql_ecritures_detail")
+def tool_sql_ecritures_detail(query: str) -> str:
+    """Requête SQL sur le Grand Livre détaillé, le journal centralisateur,
+    la balance auxiliaire par tiers, et la balance âgée par ancienneté."""
     try:
-        return str(_get_sql_qe("fec", ["fec_ecriture", "entite", "exercice", "pcg_analytique"]).query(query))
+        return str(_get_sql_qe("detail", ["grand_livre", "v_journal", "v_balance_auxiliaire", "v_balance_agee", "entite"]).query(query))
     except Exception as e:
-        return f"Erreur SQL fec : {e}"
+        return f"Erreur SQL ecritures_detail : {e}"
 
 
 ALL_SQL_TOOLS = [
     tool_sql_grand_livre, tool_sql_balance_generale,
     tool_sql_balance, tool_sql_sig, tool_sql_bilan,
-    tool_sql_bilan_fonctionnel, tool_sql_cr, tool_sql_crd, tool_sql_fec,
+    tool_sql_bilan_fonctionnel, tool_sql_cr, tool_sql_crd, tool_sql_ecritures_detail,
 ]

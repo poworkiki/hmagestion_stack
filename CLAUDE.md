@@ -148,42 +148,46 @@ Le mapping Python dans `generate-pcg-seed.py` est la **source de vérité unique
 
 Exécuter les scripts dans l'ordre numérique par dossier :
 ```bash
-# 1. Schéma
+# 1. Schéma (tables de référence + grand_livre)
 psql $HMA_DB_URL -f sql/01-schema/001-entite.sql
 psql $HMA_DB_URL -f sql/01-schema/002-exercice.sql
 psql $HMA_DB_URL -f sql/01-schema/003-pcg-analytique.sql
-psql $HMA_DB_URL -f sql/01-schema/004-compte-resolution.sql
 psql $HMA_DB_URL -f sql/01-schema/005-fec-import.sql
-psql $HMA_DB_URL -f sql/01-schema/006-fec-ecriture.sql
 psql $HMA_DB_URL -f sql/01-schema/007-sync-metadata.sql
 psql $HMA_DB_URL -f sql/01-schema/008-dim-calendrier.sql
 psql $HMA_DB_URL -f sql/01-schema/009-pcg-crd-mapping.sql
 psql $HMA_DB_URL -f sql/01-schema/010-pennylane-balance.sql
+psql $HMA_DB_URL -f sql/01-schema/011-grand-livre.sql
+psql $HMA_DB_URL -f sql/01-schema/012-balance-generale.sql
 
 # 2. Données de référence
 psql $HMA_DB_URL -f sql/02-data/001-pcg-analytique-seed.sql
 
-# 3. Fonctions (avant les vues qui en dépendent)
-psql $HMA_DB_URL -f sql/04-functions/resolve-compte.sql
+# 3. Fonctions
 psql $HMA_DB_URL -f sql/04-functions/refresh-views.sql
 psql $HMA_DB_URL -f sql/04-functions/refresh-views-conditional.sql
 
-# 4. Vue matérialisée (seule MV restante) + vues simples
-psql $HMA_DB_URL -f sql/03-views/001-mv-balance-generale.sql
+# 4. Vues (toutes depuis grand_livre)
 psql $HMA_DB_URL -f sql/03-views/007-v-controles-coherence.sql
 psql $HMA_DB_URL -f sql/03-views/009-vues-base-comptables.sql
-psql $HMA_DB_URL -f sql/03-views/010-refactoring-vues-grand-livre.sql  # TOUTES les vues dérivées
+psql $HMA_DB_URL -f sql/03-views/011-vues-depuis-grand-livre.sql
+psql $HMA_DB_URL -f sql/03-views/012-vues-display-gl-bg.sql
+psql $HMA_DB_URL -f sql/03-views/013-vues-balance-tiers.sql
+psql $HMA_DB_URL -f sql/03-views/014-vue-fec-export.sql
 ```
 
-**Architecture refactorée (avril 2026)** : les anciennes vues matérialisées (`mv_sig`, `mv_bilan`, `mv_compte_resultat`, `mv_bilan_fonctionnel`, `mv_resultat_differentiel`) ont été **supprimées**. Elles sont remplacées par des vues simples dérivées de `v_grand_livre` dans `010-refactoring-vues-grand-livre.sql`. Seule `mv_balance_generale` reste matérialisée.
+**Architecture (avril 2026)** : `grand_livre` est la **source unique** (table dénormalisée, données Pennylane enrichies PCG + calendrier). Seule `balance_generale` est matérialisée. Toutes les autres vues sont simples. `fec_ecriture` a été supprimée — le FEC légal est généré à la demande via `v_fec_export`.
 
 ```
-fec_ecriture + pcg_analytique + dim_calendrier
-    → v_grand_livre (source unique)
-        → v_balance, v_sig, v_sig_drilldown
-        → v_compte_resultat, v_crd, v_crd_drilldown
-        → v_bilan, v_bilan_fonctionnel
-        → v_ytd_mensuel/trimestriel/annuel
+grand_livre (TABLE dénormalisée, source unique)
+    → balance_generale (MV, agrégation mensuelle)
+    → v_grand_livre, v_balance, v_bg_display, v_bg_mensuelle
+    → v_sig, v_sig_drilldown, v_compte_resultat
+    → v_crd, v_crd_drilldown
+    → v_bilan, v_bilan_fonctionnel
+    → v_ytd_mensuel/trimestriel/annuel
+    → v_balance_clients, v_balance_fournisseurs
+    → v_fec_export (FEC légal Art. A.47 A-1 LPF)
 ```
 
 On peut aussi exécuter les migrations via SSH sur le VPS : `ssh root@187.124.150.82 "docker exec h2dnymbgnulve0kko87nh856 psql -U postgres -f /dev/stdin" < fichier.sql`
@@ -224,7 +228,7 @@ python3 scripts/sync-pennylane-balance.py --year 2025          # Année spécifi
 ```
 
 Table `pennylane_balance` = snapshot de la trial_balance Pennylane. Vues de contrôle :
-- `v_controle_balance` : compare GL (fec_ecriture) vs Pennylane (pennylane_balance) par compte
+- `v_controle_balance` : compare GL (grand_livre) vs Pennylane (pennylane_balance) par compte
 - `v_controle_resume` : résumé par structure (nb OK, nb écarts, écart total)
 
 ### Déploiement workflow n8n
@@ -632,8 +636,9 @@ ssh root@187.124.150.82 "cd /tmp/hmagents-build/hmagents && git pull && docker b
   - Le CRD s'arrête à l'ordre 6 (Résultat net). Ordres 7-9 = composantes CAF (hors tableau CRD)
 - **pennylane_balance** (PostgreSQL) : snapshot trial_balance Pennylane pour contrôle de cohérence GL vs Pennylane
 - **kb_pcg_analytique** (Qdrant) : même mapping enrichi en texte français pour RAG — dérivé de PostgreSQL, embeddings OpenAI `text-embedding-3-small`
-- **fec_ecriture** (PostgreSQL) : 25 627 écritures comptables normalisées FEC (Art. A.47 A-1 LPF)
-- **Vues matérialisées** (PostgreSQL) : mv_balance_generale, mv_sig, mv_compte_resultat, mv_bilan, mv_bilan_fonctionnel, mv_resultat_differentiel (CRD complet avec CAF + %)
+- **grand_livre** (PostgreSQL) : ~39 000 écritures comptables dénormalisées (source unique), enrichies PCG + calendrier
+- **Vue matérialisée** (PostgreSQL) : `balance_generale` (agrégation mensuelle par compte). Toutes les autres vues sont simples
+- **v_fec_export** (PostgreSQL) : FEC légal (Art. A.47 A-1 LPF) généré à la demande depuis `grand_livre`
 - **Vues enrichies** (PostgreSQL) : v_sig, v_bilan, v_compte_resultat, v_bilan_fonctionnel, v_balance_generale, v_resultat_differentiel (ajoutent `entite_nom` + `exercice_label`), v_ytd_mensuel/trimestriel/annuel, v_sig_drilldown, v_crd_drilldown (avec `annee`, `trimestre`, `mois_label`)
 - **Vues de base comptables** (PostgreSQL) : v_grand_livre (écritures + solde progressif), v_journal (totaux par journal/mois), v_balance_auxiliaire (solde par tiers + non lettré), v_balance_agee (créances/dettes par tranche d'ancienneté)
 - **KB existantes** (Qdrant) : kb_manuels (18 132 pts), kb_reglementation (11 pts), kb_conventions (6 pts), kb_pcg_analytique (1 372 pts)

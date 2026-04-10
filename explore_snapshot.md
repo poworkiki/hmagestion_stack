@@ -1,0 +1,41 @@
+- generic [ref=e2]:
+  - navigation [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - link "Apache Superset" [ref=e8] [cursor=pointer]:
+          - /url: /
+          - img "Apache Superset" [ref=e10]
+        - menu [ref=e11]:
+          - menuitem "Dashboards" [ref=e12] [cursor=pointer]
+          - menuitem "Charts" [ref=e15] [cursor=pointer]
+          - menuitem "Datasets" [ref=e18] [cursor=pointer]
+          - menuitem "down SQL" [ref=e21] [cursor=pointer]
+      - menu [ref=e28]:
+        - menuitem "down plus" [ref=e29] [cursor=pointer]:
+          - img "down" [ref=e30]
+          - img "plus" [ref=e34]
+        - menuitem "down moon" [ref=e38] [cursor=pointer]:
+          - img "down" [ref=e39]
+          - img "moon" [ref=e43]
+        - menuitem "down Settings" [ref=e46] [cursor=pointer]:
+          - img "down" [ref=e47]
+          - generic [ref=e50]: Settings
+  - main [ref=e52]:
+    - generic [ref=e53]:
+      - generic [ref=e54]:
+        - generic [ref=e55]:
+          - generic [ref=e56]
+          - generic [ref=e59]
+        - generic [ref=e82]:
+          - button "save Save" [ref=e84] [cursor=pointer]
+          - button "Menu actions trigger" [ref=e86] [cursor=pointer]
+      - generic [ref=e90]:
+        - generic [ref=e91]:
+          - generic [ref=e92]
+          - generic [ref=e98]
+        - generic [ref=e338]:
+          - generic [ref=e339]
+          - button "Update chart" [ref=e818] [cursor=pointer]
+        - generic [ref=e782]:
+          - generic [ref=e783]
+          - tablist [ref=e795]

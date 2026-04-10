@@ -1,7 +1,7 @@
 -- ============================================
 -- TABLE grand_livre
 -- Données brutes Pennylane enrichies (PCG + calendrier)
--- Remplace fec_ecriture comme source unique
+-- Source unique pour toutes les vues comptables
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS grand_livre (

@@ -1,0 +1,71 @@
+- generic [ref=e2]:
+  - navigation [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - link "Apache Superset" [ref=e8] [cursor=pointer]:
+          - /url: /
+          - img "Apache Superset" [ref=e10]
+        - menu [ref=e11]:
+          - menuitem "Dashboards" [ref=e12] [cursor=pointer]:
+            - button "Dashboards" [ref=e14]
+          - menuitem "Charts" [ref=e15] [cursor=pointer]:
+            - button "Charts" [ref=e17]
+          - menuitem "Datasets" [ref=e18] [cursor=pointer]:
+            - button "Datasets" [ref=e20]
+          - menuitem "down SQL" [ref=e21] [cursor=pointer]:
+            - img "down" [ref=e22]
+            - generic [ref=e25]: SQL
+      - menu [ref=e28]:
+        - menuitem "down plus" [ref=e29] [cursor=pointer]:
+          - img "down" [ref=e30]:
+            - img [ref=e31]
+          - img "plus" [ref=e34]:
+            - img [ref=e35]
+        - menuitem "down moon" [ref=e38] [cursor=pointer]:
+          - img "down" [ref=e39]:
+            - img [ref=e40]
+          - img "moon" [ref=e43]:
+            - img [ref=e44]
+        - menuitem "down Settings" [ref=e46] [cursor=pointer]:
+          - img "down" [ref=e47]:
+            - img [ref=e48]
+          - generic [ref=e50]: Settings
+  - main [ref=e53]:
+    - generic [ref=e54]:
+      - generic [ref=e55]:
+        - generic [ref=e56]:
+          - generic [ref=e57]:
+            - textbox "Chart title" [ref=e58]:
+              - /placeholder: Add the name of the chart
+            - generic [ref=e59]: SIG par structure
+          - generic [ref=e60]:
+            - button "unstarred" [ref=e61] [cursor=pointer]
+            - generic [ref=e66]
+        - generic [ref=e83]:
+          - button "save Save" [ref=e85] [cursor=pointer]:
+            - img "save" [ref=e87]
+            - generic [ref=e90]: Save
+          - button "Menu actions trigger" [ref=e92] [cursor=pointer]:
+            - img "ellipsis" [ref=e93]
+      - generic [ref=e96]:
+        - generic [ref=e97]:
+          - generic [ref=e98]:
+            - generic [ref=e99]: Chart Source
+            - button "vertical-align" [ref=e100] [cursor=pointer]
+          - generic [ref=e104]:
+            - generic [ref=e107]
+            - textbox "Search Metrics & Columns" [ref=e117]
+            - generic [ref=e121]
+        - generic [ref=e288]:
+          - generic [ref=e289]:
+            - tablist [ref=e290]
+            - tabpanel "Data" [ref=e300]
+          - button "Update chart" [ref=e704] [cursor=pointer]:
+            - generic [ref=e705]: Update chart
+        - generic [ref=e709]:
+          - generic [ref=e710]:
+            - generic [ref=e712]
+            - grid [ref=e729]
+          - tablist [ref=e1045]:
+            - generic [ref=e1047]
+            - button "Expand data panel" [ref=e1054] [cursor=pointer]

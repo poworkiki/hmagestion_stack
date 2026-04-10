@@ -1,0 +1,127 @@
+{
+  "name": "Sync Pennylane → grand_livre (API toolbox — cron 2h)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-manual",
+      "name": "Declenchement manuel",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      },
+      "id": "trigger-cron",
+      "name": "Cron toutes les 2h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://hma-toolbox:8000/sync",
+        "options": {
+          "timeout": 600000
+        }
+      },
+      "id": "sync-gl",
+      "name": "Sync 4 structures → grand_livre",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [300, 110],
+      "notes": "Appelle l'API FastAPI de hma-toolbox.\nExecute sync-pennylane-gl.py (Pennylane → grand_livre).\nExercice resolu par ligne. Cree les exercices manquants.\nTimeout 10 min."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-ok",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "ok",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-status",
+      "name": "Sync OK ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [540, 110]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://hma-toolbox:8000/refresh",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "refresh-views",
+      "name": "Refresh conditionnel vues",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [780, 0],
+      "notes": "Appelle refresh_views_if_needed() via l'API toolbox.\nNe rafraichit balance_generale que si des donnees ont change."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Log l'erreur pour debug\nconst data = $input.first().json;\nconst msg = `Sync ERREUR: ${JSON.stringify(data.erreurs || data.stderr || data.status)}`;\nconsole.log(msg);\nreturn [{ json: { error: true, detail: msg } }];"
+      },
+      "id": "log-error",
+      "name": "Log erreur sync",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [780, 220]
+    }
+  ],
+  "connections": {
+    "Declenchement manuel": {
+      "main": [
+        [{ "node": "Sync 4 structures → grand_livre", "type": "main", "index": 0 }]
+      ]
+    },
+    "Cron toutes les 2h": {
+      "main": [
+        [{ "node": "Sync 4 structures → grand_livre", "type": "main", "index": 0 }]
+      ]
+    },
+    "Sync 4 structures → grand_livre": {
+      "main": [
+        [{ "node": "Sync OK ?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Sync OK ?": {
+      "main": [
+        [{ "node": "Refresh conditionnel vues", "type": "main", "index": 0 }],
+        [{ "node": "Log erreur sync", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "description": "Sync Pennylane → grand_livre via API hma-toolbox (http://hma-toolbox:8000). Cron 2h + declenchement manuel. Import direct dans grand_livre (enrichi PCG + calendrier). Exercice resolu par ligne. 6 noeuds : trigger → HTTP sync → check → refresh/log."
+  }
+}

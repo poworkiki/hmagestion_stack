@@ -26,7 +26,7 @@ CREATE INDEX IF NOT EXISTS idx_pb_compte ON pennylane_balance(compte_numero);
 
 -- ============================================
 -- Vue: v_controle_balance
--- Compare GL (fec_ecriture) vs Pennylane (pennylane_balance)
+-- Compare GL (grand_livre) vs Pennylane (pennylane_balance)
 -- Detecte les ecarts automatiquement
 -- ============================================
 
@@ -55,16 +55,16 @@ SELECT
 FROM pennylane_balance pb
 LEFT JOIN (
     SELECT
-        e.entite_id,
-        e.pcg_numero AS compte_numero,
-        SUM(e.debit) AS gl_debit,
-        SUM(e.credit) AS gl_credit,
-        SUM(e.credit - e.debit) AS gl_solde
-    FROM fec_ecriture e
-    WHERE e.journal_code NOT IN ('AN', 'OD-AN', 'RAN')
-      AND e.ecriture_date >= (SELECT MIN(period_start) FROM pennylane_balance)
-      AND e.ecriture_date <= (SELECT MAX(period_end) FROM pennylane_balance)
-    GROUP BY e.entite_id, e.pcg_numero
+        entite_id,
+        compte_numero,
+        SUM(debit) AS gl_debit,
+        SUM(credit) AS gl_credit,
+        SUM(credit - debit) AS gl_solde
+    FROM grand_livre
+    WHERE NOT is_a_nouveau
+      AND ecriture_date >= (SELECT MIN(period_start) FROM pennylane_balance)
+      AND ecriture_date <= (SELECT MAX(period_end) FROM pennylane_balance)
+    GROUP BY entite_id, compte_numero
 ) gl ON gl.entite_id = pb.entite_id AND gl.compte_numero = pb.compte_numero;
 
 -- Vue resumee des ecarts
