@@ -1,0 +1,207 @@
+/* ═══════════════════════════════════════════════════════════════
+   HMA — Exploration Comptable — Theme custom Marimo
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+    --hma-blue: #1a365d;
+    --hma-blue-light: #2c5282;
+    --hma-blue-accent: #3182ce;
+    --hma-green: #276749;
+    --hma-red: #c53030;
+    --hma-orange: #c05621;
+    --hma-gray: #718096;
+    --hma-bg: #f7fafc;
+    --hma-card-bg: #ffffff;
+    --hma-border: #e2e8f0;
+    --hma-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    --hma-radius: 10px;
+}
+
+/* ── Fond general ── */
+body {
+    background-color: var(--hma-bg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: #2d3748;
+}
+
+/* ── Titre principal (h1) ── */
+h1 {
+    color: var(--hma-blue) !important;
+    font-weight: 800 !important;
+    font-size: 1.8rem !important;
+    padding-bottom: 0.6rem;
+    border-bottom: 3px solid var(--hma-blue-accent);
+    margin-bottom: 1.2rem !important;
+}
+
+h2, h3 {
+    color: var(--hma-blue-light) !important;
+    font-weight: 700 !important;
+}
+
+h3 {
+    font-size: 1.05rem !important;
+    margin-top: 1rem !important;
+    margin-bottom: 0.6rem !important;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--hma-border);
+}
+
+/* ── Sidebar ── */
+[data-cell-role='sidebar'],
+.marimo-sidebar,
+aside {
+    background: linear-gradient(180deg, var(--hma-blue) 0%, #0f2440 100%) !important;
+    color: white !important;
+    min-width: 220px;
+}
+
+aside h1, aside h2, aside h3, aside h4 {
+    color: white !important;
+    border: none !important;
+}
+
+aside label,
+aside .marimo-label {
+    color: #cbd5e0 !important;
+    font-size: 0.78rem !important;
+    font-weight: 600 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+aside a,
+aside p,
+aside li {
+    color: #e2e8f0 !important;
+}
+
+aside hr {
+    border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* ── KPI stats (mo.stat) ── */
+.marimo-stat {
+    background: var(--hma-card-bg) !important;
+    border-radius: var(--hma-radius) !important;
+    padding: 1.1rem 1rem !important;
+    box-shadow: var(--hma-shadow) !important;
+    border: none !important;
+    border-top: 3px solid var(--hma-blue-accent) !important;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.marimo-stat:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1) !important;
+}
+
+.marimo-stat-label {
+    color: var(--hma-gray) !important;
+    text-transform: uppercase;
+    font-size: 0.72rem !important;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+}
+
+.marimo-stat-value {
+    color: var(--hma-blue) !important;
+    font-weight: 800 !important;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Tableaux ── */
+.marimo-table thead th {
+    background-color: var(--hma-bg) !important;
+    color: var(--hma-blue) !important;
+    font-size: 0.78rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 700;
+    border-bottom: 2px solid var(--hma-border) !important;
+}
+
+.marimo-table tbody tr:hover {
+    background-color: #edf2f7 !important;
+}
+
+/* ── Tabs ── */
+button[role='tab'] {
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+    color: var(--hma-gray) !important;
+    padding: 0.75rem 1.25rem !important;
+}
+
+button[role='tab'][aria-selected='true'] {
+    color: var(--hma-blue) !important;
+    border-bottom: 3px solid var(--hma-blue-accent) !important;
+}
+
+/* ── Callouts ── */
+.marimo-callout {
+    border-radius: var(--hma-radius) !important;
+    border-left-width: 4px !important;
+    box-shadow: var(--hma-shadow);
+}
+
+/* ── Boutons download ── */
+button[class*='download'],
+a[download] {
+    background: var(--hma-blue-accent) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    padding: 0.5rem 1rem !important;
+}
+
+button[class*='download']:hover {
+    background: var(--hma-blue) !important;
+}
+
+/* ── Dropdowns / inputs dans la sidebar ── */
+aside select,
+aside input[type='text'],
+aside .marimo-dropdown {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+    color: white !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    border-radius: 6px !important;
+}
+
+aside select:focus,
+aside input[type='text']:focus {
+    border-color: var(--hma-blue-accent) !important;
+    outline: none !important;
+}
+
+/* ── Scrollbar discrete ── */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #cbd5e0;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--hma-gray);
+}
+
+/* ── Texte Markdown ── */
+p {
+    line-height: 1.6;
+}
+
+hr {
+    border: none;
+    border-top: 1px solid var(--hma-border);
+    margin: 1.5rem 0;
+}
