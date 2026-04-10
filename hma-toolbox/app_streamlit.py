@@ -25,6 +25,7 @@ JS_FMT = JsCode("function(v){return v.toLocaleString('fr-FR',{maximumFractionDig
 st.set_page_config(
     page_title="HMA Toolbox",
     page_icon=":bar_chart:",
+    initial_sidebar_state="expanded",
     layout="wide",
 )
 
@@ -115,17 +116,54 @@ st.sidebar.markdown("---")
 st.sidebar.caption("HMA Gestion — Guyane")
 
 
-# --- KPI TOP BAR (toujours visible) ---
+# --- CSS : top bar sticky ---
+st.markdown("""
+<style>
+div[data-testid="stMetric"] {
+    background-color: #f0f2f6;
+    border-radius: 8px;
+    padding: 10px 15px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+div[data-testid="stMetric"] label {
+    font-size: 0.8rem;
+    color: #555;
+}
+div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
+    font-size: 1.3rem;
+    font-weight: 700;
+}
+.sticky-header {
+    position: sticky;
+    top: 0;
+    z-index: 999;
+    background: white;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #ddd;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# --- KPI TOP BAR (sticky, toujours visible) ---
 _kpi_ca = query_single(f"SELECT COALESCE(SUM(credit - debit), 0) FROM grand_livre WHERE {where_no_an} AND compte_numero LIKE '70%'")
 _kpi_charges = query_single(f"SELECT COALESCE(SUM(debit - credit), 0) FROM grand_livre WHERE {where_no_an} AND classe = 6")
 _kpi_resultat = float(_kpi_ca or 0) - float(_kpi_charges or 0)
 _kpi_nb = query_single(f"SELECT COUNT(*) FROM grand_livre WHERE {where}")
 
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("CA", fmt(_kpi_ca))
-k2.metric("Charges", fmt(_kpi_charges))
-k3.metric("Resultat", fmt(_kpi_resultat))
-k4.metric("Ecritures", f"{_kpi_nb:,}")
+# Label filtre actif
+_filtre_label = selected_structure if selected_structure != 'Toutes' else 'Groupe'
+if selected_exercice != 'Tous':
+    _filtre_label += f" | {selected_exercice}"
+if selected_mois != 'Tous':
+    _filtre_label += f" | {selected_mois}"
+
+with st.container():
+    st.caption(f"**{_filtre_label}**")
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("CA", fmt(_kpi_ca))
+    k2.metric("Charges", fmt(_kpi_charges))
+    k3.metric("Resultat", fmt(_kpi_resultat))
+    k4.metric("Ecritures", f"{_kpi_nb:,}")
 st.divider()
 
 
@@ -233,19 +271,19 @@ elif page == "Balance Generale":
     # Filtre classe
     classe_filter = st.multiselect("Filtrer par classe", [1,2,3,4,5,6,7], default=[])
 
-    where_bg = "1=1"
-    if selected_structure != 'Toutes':
-        where_bg += f" AND entite_nom LIKE '%{selected_structure}%'"
-    if selected_exercice != 'Tous':
-        where_bg += f" AND annee::text = '{selected_exercice}'"
+    where_bg = where.replace("entite_code", "entite_nom")
     if classe_filter:
         where_bg += f" AND classe IN ({','.join(str(c) for c in classe_filter)})"
 
     bg_data = query_dicts(f"""
         SELECT entite_nom, annee, classe, compte_numero, compte_libelle,
-            total_debit, total_credit, solde_debiteur, solde_crediteur, solde
-        FROM v_bg_display
+            SUM(total_debit) AS total_debit, SUM(total_credit) AS total_credit,
+            GREATEST(SUM(total_debit - total_credit), 0) AS solde_debiteur,
+            GREATEST(SUM(total_credit - total_debit), 0) AS solde_crediteur,
+            SUM(total_debit - total_credit) AS solde
+        FROM balance_generale
         WHERE {where_bg}
+        GROUP BY entite_nom, annee, classe, compte_numero, compte_libelle
         ORDER BY compte_numero
     """)
 
@@ -299,27 +337,26 @@ elif page == "Bilan Comptable":
     st.title(":balance_scale: Bilan Comptable")
 
     bilan_data = query_dicts(f"""
-        SELECT entite_nom, annee, bilan_section, bilan_poste,
-            ROUND(SUM(montant_brut)::numeric, 0) AS brut,
-            ROUND(SUM(amortissements)::numeric, 0) AS amort,
-            ROUND(SUM(montant_net)::numeric, 0) AS net
-        FROM v_bilan
-        WHERE {where.replace('entite_code', 'entite_id::text')} OR 1=1
-        GROUP BY entite_nom, annee, bilan_section, bilan_poste
+        SELECT entite_code, annee, bilan_section, bilan_poste,
+            ROUND(SUM(CASE
+                WHEN compte_numero NOT LIKE '28%' AND compte_numero NOT LIKE '29%'
+                 AND compte_numero NOT LIKE '39%' AND compte_numero NOT LIKE '49%'
+                 AND compte_numero NOT LIKE '59%'
+                THEN CASE WHEN bilan_section LIKE 'actif%' THEN debit - credit ELSE credit - debit END
+                ELSE 0 END)::numeric, 0) AS brut,
+            ROUND(SUM(CASE
+                WHEN compte_numero LIKE '28%' OR compte_numero LIKE '29%'
+                  OR compte_numero LIKE '39%' OR compte_numero LIKE '49%'
+                  OR compte_numero LIKE '59%'
+                THEN credit - debit ELSE 0 END)::numeric, 0) AS amort,
+            ROUND(SUM(CASE
+                WHEN bilan_section LIKE 'actif%' THEN debit - credit ELSE credit - debit
+            END)::numeric, 0) AS net
+        FROM grand_livre
+        WHERE bilan_section IS NOT NULL AND classe BETWEEN 1 AND 5 AND {where}
+        GROUP BY entite_code, annee, bilan_section, bilan_poste
         ORDER BY bilan_section, bilan_poste
     """)
-
-    if not bilan_data:
-        # Fallback direct query
-        bilan_data = query_dicts(f"""
-            SELECT entite_code AS entite_nom, annee, bilan_section, bilan_poste,
-                ROUND(SUM(montant_brut)::numeric, 0) AS brut,
-                ROUND(SUM(amortissements)::numeric, 0) AS amort,
-                ROUND(SUM(montant_net)::numeric, 0) AS net
-            FROM v_bilan
-            GROUP BY entite_code, annee, bilan_section, bilan_poste
-            ORDER BY bilan_section, bilan_poste
-        """)
 
     if bilan_data:
         # Separer actif et passif
@@ -377,12 +414,33 @@ elif page == "Bilan Comptable":
 elif page == "Bilan Fonctionnel":
     st.title(":building_construction: Bilan Fonctionnel")
 
-    bf_data = query_dicts("""
-        SELECT entite_nom, annee, bf_categorie,
-            ROUND(SUM(montant)::numeric, 0) AS montant
-        FROM v_bilan_fonctionnel
-        GROUP BY entite_nom, annee, bf_categorie
-        ORDER BY entite_nom, bf_categorie
+    bf_data = query_dicts(f"""
+        WITH brut AS (
+            SELECT entite_code, bf_categorie,
+                SUM(CASE
+                    WHEN bf_categorie IN ('emplois_stables','bfr_exploit','bfr_hors_exploit','tresorerie_active')
+                    THEN debit - credit ELSE credit - debit
+                END) AS montant
+            FROM grand_livre
+            WHERE bf_categorie IS NOT NULL AND {where}
+              AND compte_numero NOT LIKE '28%' AND compte_numero NOT LIKE '29%'
+              AND compte_numero NOT LIKE '39%' AND compte_numero NOT LIKE '49%'
+              AND compte_numero NOT LIKE '59%'
+            GROUP BY entite_code, bf_categorie
+        ),
+        amort AS (
+            SELECT entite_code, 'ressources_stables' AS bf_categorie,
+                SUM(credit - debit) AS montant
+            FROM grand_livre
+            WHERE {where} AND (compte_numero LIKE '28%' OR compte_numero LIKE '29%'
+               OR compte_numero LIKE '39%' OR compte_numero LIKE '49%'
+               OR compte_numero LIKE '59%')
+            GROUP BY entite_code
+        )
+        SELECT entite_code AS entite_nom, bf_categorie, ROUND(SUM(montant)::numeric, 0) AS montant
+        FROM (SELECT * FROM brut UNION ALL SELECT * FROM amort) combined
+        GROUP BY entite_code, bf_categorie
+        ORDER BY entite_code, bf_categorie
     """)
 
     if bf_data:
