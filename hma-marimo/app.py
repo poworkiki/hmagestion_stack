@@ -41,7 +41,14 @@ def _(os, psycopg2):
                 rows = cur.fetchall()
                 return _pd.DataFrame(rows) if rows else _pd.DataFrame()
 
-    return DB_URL, query
+    def fmt(v):
+        if v is None:
+            return "0 €"
+        sign = "-" if float(v) < 0 else ""
+        parts = f"{abs(float(v)):,.0f}".replace(",", " ")
+        return f"{sign}{parts} €"
+
+    return DB_URL, fmt, query
 
 
 @app.cell
@@ -184,7 +191,7 @@ def _(annee, entite_id, filtre_mois, gl_filtre_compte, mo, query, tabs):
 # ── CRD ─────────────────────────────────────────────────────────
 
 @app.cell
-def _(annee, entite_id, go, mo, pd, px, query, tabs):
+def _(annee, entite_id, fmt, go, mo, pd, px, query, tabs):
     mo.stop(tabs.value != "crd")
 
     df_crd = query("""
@@ -203,12 +210,6 @@ def _(annee, entite_id, go, mo, pd, px, query, tabs):
             "resultat_financier": "sum", "rcai": "sum",
             "resultat_net": "sum", "caf": "sum",
         })
-
-        def fmt(v):
-            if v is None: return "0 €"
-            sign = "-" if float(v) < 0 else ""
-            parts = f"{abs(float(v)):,.0f}".replace(",", " ")
-            return f"{sign}{parts} €"
 
         # Waterfall
         labels = ["CA", "- Ch. var.", "MCV", "- Ch. fixes",
@@ -266,7 +267,7 @@ def _(annee, entite_id, go, mo, pd, px, query, tabs):
 # ── BILAN FONCTIONNEL ───────────────────────────────────────────
 
 @app.cell
-def _(annee, entite_id, go, mo, px, query, tabs):
+def _(annee, entite_id, fmt, go, mo, px, query, tabs):
     mo.stop(tabs.value != "bf")
 
     df_bf = query("""
@@ -290,11 +291,6 @@ def _(annee, entite_id, go, mo, px, query, tabs):
         frng = ressources - emplois
         bfr = bfr_e + bfr_he
         tn = treso_a - treso_p
-
-        def fmt(v):
-            sign = "-" if float(v) < 0 else ""
-            parts = f"{abs(float(v)):,.0f}".replace(",", " ")
-            return f"{sign}{parts} €"
 
         ok = abs(frng - (bfr + tn)) < 1
         verif = "✓ Equilibre verifie" if ok else f"✗ Ecart : {fmt(abs(frng - (bfr + tn)))}"
