@@ -70,6 +70,11 @@ where_no_an = f"{where} AND NOT is_a_nouveau"
 
 page = st.sidebar.radio("Page", [
     "Tableau de bord",
+    "Balance Generale",
+    "Bilan Comptable",
+    "Bilan Fonctionnel",
+    "Balance Clients",
+    "Balance Fournisseurs",
     "SIG Express",
     "CRD Express",
     "Exploration GL",
@@ -180,7 +185,324 @@ if page == "Tableau de bord":
 
 
 # ==========================================
-# PAGE 2 : SIG EXPRESS
+# PAGE 2 : BALANCE GENERALE
+# ==========================================
+elif page == "Balance Generale":
+    st.title(":ledger: Balance Generale")
+
+    # Filtre classe
+    classe_filter = st.multiselect("Filtrer par classe", [1,2,3,4,5,6,7], default=[])
+
+    where_bg = "1=1"
+    if selected_structure != 'Toutes':
+        where_bg += f" AND entite_nom LIKE '%{selected_structure}%'"
+    if selected_exercice != 'Tous':
+        where_bg += f" AND annee::text = '{selected_exercice}'"
+    if classe_filter:
+        where_bg += f" AND classe IN ({','.join(str(c) for c in classe_filter)})"
+
+    bg_data = query_dicts(f"""
+        SELECT entite_nom, annee, classe, compte_numero, compte_libelle,
+            total_debit, total_credit, solde_debiteur, solde_crediteur, solde
+        FROM v_bg_display
+        WHERE {where_bg}
+        ORDER BY compte_numero
+    """)
+
+    if bg_data:
+        # KPIs
+        total_d = sum(float(d['total_debit'] or 0) for d in bg_data)
+        total_c = sum(float(d['total_credit'] or 0) for d in bg_data)
+        nb_comptes = len(bg_data)
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Comptes", f"{nb_comptes}")
+        c2.metric("Total Debit", f"{total_d:,.0f} EUR")
+        c3.metric("Total Credit", f"{total_c:,.0f} EUR")
+
+        # Table
+        st.dataframe(bg_data, use_container_width=True, height=500)
+
+        # Chart par classe
+        st.subheader("Solde par classe")
+        classe_data = {}
+        for d in bg_data:
+            cl = str(d['classe'])
+            classe_data[cl] = classe_data.get(cl, 0) + float(d['solde'] or 0)
+
+        classes = sorted(classe_data.keys())
+        soldes_classe = [round(classe_data[c]) for c in classes]
+        labels_classe = {
+            '1': '1-Capitaux', '2': '2-Immo', '3': '3-Stocks',
+            '4': '4-Tiers', '5': '5-Financiers', '6': '6-Charges', '7': '7-Produits'
+        }
+
+        bar_data = []
+        for c, v in zip(classes, soldes_classe):
+            bar_data.append({"value": v, "itemStyle": {"color": "#5470c6" if v >= 0 else "#ee6666"}})
+
+        opts = {
+            "tooltip": {"trigger": "axis"},
+            "xAxis": {"type": "category", "data": [labels_classe.get(c, c) for c in classes]},
+            "yAxis": {"type": "value"},
+            "series": [{"type": "bar", "data": bar_data}],
+        }
+        st_echarts(options=opts, height="350px", theme="streamlit")
+    else:
+        st.info("Aucune donnee pour les filtres selectionnes.")
+
+
+# ==========================================
+# PAGE 3 : BILAN COMPTABLE
+# ==========================================
+elif page == "Bilan Comptable":
+    st.title(":balance_scale: Bilan Comptable")
+
+    bilan_data = query_dicts(f"""
+        SELECT entite_nom, annee, bilan_section, bilan_poste,
+            ROUND(SUM(montant_brut)::numeric, 0) AS brut,
+            ROUND(SUM(amortissements)::numeric, 0) AS amort,
+            ROUND(SUM(montant_net)::numeric, 0) AS net
+        FROM v_bilan
+        WHERE {where.replace('entite_code', 'entite_id::text')} OR 1=1
+        GROUP BY entite_nom, annee, bilan_section, bilan_poste
+        ORDER BY bilan_section, bilan_poste
+    """)
+
+    if not bilan_data:
+        # Fallback direct query
+        bilan_data = query_dicts(f"""
+            SELECT entite_code AS entite_nom, annee, bilan_section, bilan_poste,
+                ROUND(SUM(montant_brut)::numeric, 0) AS brut,
+                ROUND(SUM(amortissements)::numeric, 0) AS amort,
+                ROUND(SUM(montant_net)::numeric, 0) AS net
+            FROM v_bilan
+            GROUP BY entite_code, annee, bilan_section, bilan_poste
+            ORDER BY bilan_section, bilan_poste
+        """)
+
+    if bilan_data:
+        # Separer actif et passif
+        actif = [d for d in bilan_data if d.get('bilan_section', '').startswith('actif')]
+        passif = [d for d in bilan_data if d.get('bilan_section', '').startswith('passif')]
+
+        total_actif = sum(float(d['net'] or 0) for d in actif)
+        total_passif = sum(float(d['net'] or 0) for d in passif)
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total Actif Net", f"{total_actif:,.0f} EUR")
+        c2.metric("Total Passif", f"{total_passif:,.0f} EUR")
+        c3.metric("Ecart", f"{total_actif - total_passif:,.0f} EUR")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Actif")
+            if actif:
+                postes_a = [d['bilan_poste'] for d in actif]
+                nets_a = [float(d['net'] or 0) for d in actif]
+                opts_a = {
+                    "tooltip": {"trigger": "axis"},
+                    "yAxis": {"type": "category", "data": postes_a[::-1]},
+                    "xAxis": {"type": "value"},
+                    "grid": {"containLabel": True},
+                    "series": [{"type": "bar", "data": nets_a[::-1],
+                                "itemStyle": {"color": "#91cc75"}}],
+                }
+                st_echarts(options=opts_a, height="400px", theme="streamlit", key="bilan_actif")
+
+        with col2:
+            st.subheader("Passif")
+            if passif:
+                postes_p = [d['bilan_poste'] for d in passif]
+                nets_p = [float(d['net'] or 0) for d in passif]
+                opts_p = {
+                    "tooltip": {"trigger": "axis"},
+                    "yAxis": {"type": "category", "data": postes_p[::-1]},
+                    "xAxis": {"type": "value"},
+                    "grid": {"containLabel": True},
+                    "series": [{"type": "bar", "data": nets_p[::-1],
+                                "itemStyle": {"color": "#5470c6"}}],
+                }
+                st_echarts(options=opts_p, height="400px", theme="streamlit", key="bilan_passif")
+
+        with st.expander("Detail complet"):
+            st.dataframe(bilan_data, use_container_width=True)
+    else:
+        st.info("Aucune donnee bilan.")
+
+
+# ==========================================
+# PAGE 4 : BILAN FONCTIONNEL
+# ==========================================
+elif page == "Bilan Fonctionnel":
+    st.title(":building_construction: Bilan Fonctionnel")
+
+    bf_data = query_dicts("""
+        SELECT entite_nom, annee, bf_categorie,
+            ROUND(SUM(montant)::numeric, 0) AS montant
+        FROM v_bilan_fonctionnel
+        GROUP BY entite_nom, annee, bf_categorie
+        ORDER BY entite_nom, bf_categorie
+    """)
+
+    if bf_data:
+        # Calcul FRNG, BFR, TN
+        emplois_stables = sum(float(d['montant'] or 0) for d in bf_data if d['bf_categorie'] == 'emplois_stables')
+        ressources_stables = sum(float(d['montant'] or 0) for d in bf_data if d['bf_categorie'] == 'ressources_stables')
+        bfr_exploit = sum(float(d['montant'] or 0) for d in bf_data if d['bf_categorie'] == 'bfr_exploit')
+        bfr_hors = sum(float(d['montant'] or 0) for d in bf_data if d['bf_categorie'] == 'bfr_hors_exploit')
+        treso_active = sum(float(d['montant'] or 0) for d in bf_data if d['bf_categorie'] == 'tresorerie_active')
+        treso_passive = sum(float(d['montant'] or 0) for d in bf_data if d['bf_categorie'] == 'tresorerie_passive')
+
+        frng = ressources_stables - emplois_stables
+        bfr = bfr_exploit + bfr_hors
+        tn = treso_active - treso_passive
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("FRNG", f"{frng:,.0f} EUR", help="Ressources stables - Emplois stables")
+        c2.metric("BFR", f"{bfr:,.0f} EUR", help="BFR exploitation + BFR hors exploitation")
+        c3.metric("Tresorerie Nette", f"{tn:,.0f} EUR", help="Tresorerie active - Tresorerie passive")
+
+        # Verification : FRNG = BFR + TN
+        ecart_bf = frng - bfr - tn
+        if abs(ecart_bf) > 1:
+            st.warning(f"Ecart d'equilibre : FRNG - BFR - TN = {ecart_bf:,.0f} EUR")
+        else:
+            st.success("Equilibre verifie : FRNG = BFR + TN")
+
+        # Chart
+        categories = ['Emplois stables', 'Ressources stables', 'BFR exploit', 'BFR hors exploit', 'Treso active', 'Treso passive']
+        montants = [emplois_stables, ressources_stables, bfr_exploit, bfr_hors, treso_active, treso_passive]
+        colors = ['#ee6666', '#91cc75', '#fac858', '#fac858', '#73c0de', '#ee6666']
+
+        opts = {
+            "tooltip": {"trigger": "axis",
+                        "valueFormatter": JsCode("function(v){return Math.round(v).toLocaleString()+' EUR'}")},
+            "xAxis": {"type": "category", "data": categories, "axisLabel": {"rotate": 30}},
+            "yAxis": {"type": "value"},
+            "series": [{"type": "bar", "data": [
+                {"value": round(v), "itemStyle": {"color": c}} for v, c in zip(montants, colors)
+            ]}],
+        }
+        st_echarts(options=opts, height="400px", theme="streamlit")
+
+        with st.expander("Detail par structure"):
+            st.dataframe(bf_data, use_container_width=True)
+    else:
+        st.info("Aucune donnee bilan fonctionnel.")
+
+
+# ==========================================
+# PAGE 5 : BALANCE CLIENTS
+# ==========================================
+elif page == "Balance Clients":
+    st.title(":bust_in_silhouette: Balance Clients")
+
+    where_cl = "1=1"
+    if selected_structure != 'Toutes':
+        where_cl += f" AND entite_code = '{selected_structure}'"
+
+    clients = query_dicts(f"""
+        SELECT entite_code, client_nom, compte_numero,
+            nb_ecritures, ROUND(total_debit::numeric, 2) AS total_debit,
+            ROUND(total_credit::numeric, 2) AS total_credit,
+            ROUND(solde::numeric, 2) AS solde,
+            ROUND(solde_non_lettre::numeric, 2) AS solde_non_lettre,
+            anciennete_max_jours, tranche_anciennete
+        FROM v_balance_clients
+        WHERE {where_cl}
+        ORDER BY ABS(solde) DESC
+    """)
+
+    if clients:
+        total_solde = sum(float(d['solde'] or 0) for d in clients)
+        total_non_lettre = sum(float(d['solde_non_lettre'] or 0) for d in clients)
+        nb_clients = len(clients)
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Clients", f"{nb_clients}")
+        c2.metric("Solde total", f"{total_solde:,.0f} EUR")
+        c3.metric("Non lettre", f"{total_non_lettre:,.0f} EUR")
+
+        st.dataframe(clients, use_container_width=True, height=400)
+
+        # Chart anciennete
+        st.subheader("Repartition par anciennete")
+        tranches = {}
+        for d in clients:
+            t = d.get('tranche_anciennete', 'Inconnu')
+            tranches[t] = tranches.get(t, 0) + float(d['solde_non_lettre'] or 0)
+
+        if tranches:
+            pie_data = [{"name": k, "value": round(abs(v))} for k, v in sorted(tranches.items()) if v != 0]
+            opts = {
+                "tooltip": {"trigger": "item", "formatter": "{b}: {c} EUR ({d}%)"},
+                "series": [{"type": "pie", "radius": ["40%", "70%"], "data": pie_data,
+                            "itemStyle": {"borderRadius": 8, "borderColor": "#fff", "borderWidth": 2},
+                            "label": {"show": True, "formatter": "{b}: {d}%"}}],
+            }
+            st_echarts(options=opts, height="350px", theme="streamlit")
+    else:
+        st.info("Aucune donnee clients.")
+
+
+# ==========================================
+# PAGE 6 : BALANCE FOURNISSEURS
+# ==========================================
+elif page == "Balance Fournisseurs":
+    st.title(":package: Balance Fournisseurs")
+
+    where_fr = "1=1"
+    if selected_structure != 'Toutes':
+        where_fr += f" AND entite_code = '{selected_structure}'"
+
+    fournisseurs = query_dicts(f"""
+        SELECT entite_code, fournisseur_nom, compte_numero,
+            nb_ecritures, ROUND(total_debit::numeric, 2) AS total_debit,
+            ROUND(total_credit::numeric, 2) AS total_credit,
+            ROUND(solde::numeric, 2) AS solde,
+            ROUND(solde_non_lettre::numeric, 2) AS solde_non_lettre,
+            anciennete_max_jours, tranche_anciennete
+        FROM v_balance_fournisseurs
+        WHERE {where_fr}
+        ORDER BY ABS(solde) DESC
+    """)
+
+    if fournisseurs:
+        total_solde = sum(float(d['solde'] or 0) for d in fournisseurs)
+        total_non_lettre = sum(float(d['solde_non_lettre'] or 0) for d in fournisseurs)
+        nb_fourn = len(fournisseurs)
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Fournisseurs", f"{nb_fourn}")
+        c2.metric("Solde total", f"{total_solde:,.0f} EUR")
+        c3.metric("Non lettre", f"{total_non_lettre:,.0f} EUR")
+
+        st.dataframe(fournisseurs, use_container_width=True, height=400)
+
+        # Top 10 fournisseurs par solde
+        st.subheader("Top 10 fournisseurs")
+        top10 = fournisseurs[:10]
+        noms = [d['fournisseur_nom'][:30] for d in top10]
+        soldes = [float(d['solde'] or 0) for d in top10]
+
+        bar_data = [{"value": round(v), "itemStyle": {"color": "#ee6666" if v < 0 else "#91cc75"}}
+                    for v in soldes]
+
+        opts = {
+            "tooltip": {"trigger": "axis"},
+            "yAxis": {"type": "category", "data": noms[::-1]},
+            "xAxis": {"type": "value"},
+            "grid": {"containLabel": True, "left": "3%"},
+            "series": [{"type": "bar", "data": bar_data[::-1]}],
+        }
+        st_echarts(options=opts, height="400px", theme="streamlit")
+    else:
+        st.info("Aucune donnee fournisseurs.")
+
+
+# ==========================================
+# PAGE 7 : SIG EXPRESS
 # ==========================================
 elif page == "SIG Express":
     st.title(":chart_with_upwards_trend: SIG Express")
