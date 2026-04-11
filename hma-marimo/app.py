@@ -450,11 +450,7 @@ def _(kpi_data):
                     alt.Tooltip("pct:Q", title="% du CA", format=".1%"),
                 ],
             )
-            .properties(
-                title=f"Decomposition du CA ({fmt(_ca)})",
-                height=320,
-                width=320,
-            )
+            .properties(title=f"Decomposition du CA ({fmt(_ca)})", height=260, width="container")
         )
         charges_donut = _chart
     return (charges_donut,)
@@ -495,7 +491,7 @@ def _(kpi_data):
                     alt.Tooltip("montant:Q",  title="Montant", format=",.0f"),
                 ],
             )
-            .properties(title="Structure du compte de resultat", height=320, width="container")
+            .properties(title="Structure du compte de resultat", height=260, width="container")
         )
         structure_chart = _chart
     return (structure_chart,)
@@ -555,8 +551,8 @@ def _(annee, entite_ids, refresh_tick):
                 ],
             )
             .properties(
-                title="Evolution mensuelle (produits / charges / resultat)",
-                height=320,
+                title="Evolution mensuelle",
+                height=260,
                 width="container",
             )
         )
@@ -572,15 +568,13 @@ def _(charges_donut, evolution_chart, kpi_row, structure_chart):
         [
             mo.md("### Indicateurs cles"),
             kpi_row,
-            mo.md("### Structure et repartition"),
+            mo.md("### Structure et evolution"),
             mo.hstack(
-                [charges_donut, structure_chart],
+                [charges_donut, structure_chart, evolution_chart],
                 widths="equal",
-                gap=2,
+                gap=1.5,
                 align="start",
             ),
-            mo.md("### Evolution mensuelle"),
-            evolution_chart,
         ],
         gap=2,
     )
