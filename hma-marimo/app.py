@@ -965,6 +965,325 @@ def _(bf_chart, bf_drill, bf_drill_cat, bf_kpi, bf_table_html, bf_verif, date_re
     return (bf_tab,)
 
 
+# ── PAGE 4 : BUDGET CRD ─────────────────────────────────────────
+
+@app.function
+def budget_get_or_create_scenario(entite_id_val, annee_val):
+    """Retourne l'id du scenario 'Central {annee}' pour l'entite, le cree si absent."""
+    if not entite_id_val:
+        return None
+    _nom = f"Central {annee_val}"
+    _df = db_query(
+        "SELECT id FROM budget_scenario WHERE entite_id = %s::uuid AND annee = %s AND nom = %s",
+        (entite_id_val, annee_val, _nom),
+    )
+    if not _df.empty:
+        return str(_df.iloc[0]["id"])
+    # Creation
+    _df = db_query(
+        """INSERT INTO budget_scenario (entite_id, annee, nom, description, annee_reference)
+           VALUES (%s::uuid, %s, %s, %s, %s)
+           RETURNING id""",
+        (entite_id_val, annee_val, _nom, "Scenario central par defaut", annee_val - 1),
+    )
+    _sid = str(_df.iloc[0]["id"])
+    db_query(
+        "INSERT INTO budget_regle_globale (scenario_id) VALUES (%s::uuid) ON CONFLICT DO NOTHING",
+        (_sid,),
+    )
+    return _sid
+
+
+@app.function
+def budget_load_regle_globale(scenario_id_val):
+    if not scenario_id_val:
+        return (10.0, 5.0)
+    _df = db_query(
+        "SELECT taux_revenus, taux_charges FROM budget_regle_globale WHERE scenario_id = %s::uuid",
+        (scenario_id_val,),
+    )
+    if _df.empty:
+        return (10.0, 5.0)
+    return (float(_df.iloc[0]["taux_revenus"]), float(_df.iloc[0]["taux_charges"]))
+
+
+@app.cell(hide_code=True)
+def _(annee, entite_id, is_groupe):
+    if is_groupe:
+        budget_scenario_id = None
+        budget_taux_init = (10.0, 5.0)
+    else:
+        budget_scenario_id = budget_get_or_create_scenario(entite_id, annee)
+        budget_taux_init = budget_load_regle_globale(budget_scenario_id)
+    return (budget_scenario_id, budget_taux_init)
+
+
+@app.cell(hide_code=True)
+def _(budget_taux_init):
+    budget_slider_revenus = mo.ui.slider(
+        start=-20, stop=50, step=1,
+        value=int(budget_taux_init[0]),
+        label="Taux revenus (%)",
+        show_value=True,
+        full_width=True,
+    )
+    budget_slider_charges = mo.ui.slider(
+        start=-20, stop=50, step=1,
+        value=int(budget_taux_init[1]),
+        label="Taux charges (%)",
+        show_value=True,
+        full_width=True,
+    )
+    return (budget_slider_charges, budget_slider_revenus)
+
+
+@app.cell(hide_code=True)
+def _(annee, annee_prev, entite_id, is_groupe):
+    # Donnees reelles N-1 agregees par categorie CRD
+    if is_groupe or not entite_id:
+        budget_reel_cats = {}
+    else:
+        _df = db_query("""
+            SELECT crd_ordre, crd_categorie, SUM(montant) AS montant
+            FROM v_crd_drilldown
+            WHERE entite_id = %s::uuid AND annee = %s
+            GROUP BY crd_ordre, crd_categorie
+            ORDER BY crd_ordre
+        """, (entite_id, annee_prev))
+        budget_reel_cats = {
+            r["crd_categorie"]: float(r["montant"] or 0)
+            for _, r in _df.iterrows()
+        }
+    return (budget_reel_cats,)
+
+
+@app.cell(hide_code=True)
+def _(budget_reel_cats, budget_slider_charges, budget_slider_revenus, is_groupe):
+    # Calcul in-memory : applique le taux sur chaque categorie
+    # Revenus = categorie "Chiffre d'affaires" (classe 7)
+    # Charges = tout le reste (classes 6 + resultats mixtes)
+    _revenus_cats = {"Chiffre d'affaires"}
+    taux_rev = budget_slider_revenus.value / 100.0
+    taux_chg = budget_slider_charges.value / 100.0
+
+    ca_reel   = budget_reel_cats.get("Chiffre d'affaires", 0)
+    cv_reel   = budget_reel_cats.get("Charges variables", 0)
+    cf_reel   = budget_reel_cats.get("Charges fixes exploitation", 0)
+    rf_reel   = budget_reel_cats.get("Resultat financier", 0)
+    rex_reel  = budget_reel_cats.get("Resultat exceptionnel", 0)
+    is_reel   = budget_reel_cats.get("Impot sur les societes", 0)
+
+    # Budget projete
+    ca_bdg  = ca_reel  * (1 + taux_rev)
+    cv_bdg  = cv_reel  * (1 + taux_chg)
+    cf_bdg  = cf_reel  * (1 + taux_chg)
+    rf_bdg  = rf_reel  * (1 + taux_rev if rf_reel >= 0 else 1 + taux_chg)
+    rex_bdg = rex_reel * (1 + taux_rev if rex_reel >= 0 else 1 + taux_chg)
+    is_bdg  = is_reel  * (1 + taux_chg)
+
+    # Soldes
+    mcv_reel  = ca_reel - cv_reel
+    mcv_bdg   = ca_bdg - cv_bdg
+    re_reel   = mcv_reel - cf_reel
+    re_bdg    = mcv_bdg - cf_bdg
+    rcai_reel = re_reel + rf_reel
+    rcai_bdg  = re_bdg  + rf_bdg
+    rn_reel   = rcai_reel + rex_reel - is_reel
+    rn_bdg    = rcai_bdg  + rex_bdg  - is_bdg
+
+    budget_calc = dict(
+        ca=(ca_reel, ca_bdg), cv=(cv_reel, cv_bdg), mcv=(mcv_reel, mcv_bdg),
+        cf=(cf_reel, cf_bdg), re=(re_reel, re_bdg), rf=(rf_reel, rf_bdg),
+        rcai=(rcai_reel, rcai_bdg), rex=(rex_reel, rex_bdg),
+        is_=(is_reel, is_bdg), rn=(rn_reel, rn_bdg),
+    )
+    return (budget_calc,)
+
+
+@app.cell(hide_code=True)
+def _(budget_calc):
+    def _ecart_pct(b, r):
+        if r == 0:
+            return None
+        return (b - r) / abs(r)
+
+    _ca_bdg = budget_calc["ca"][1] or 1
+    _rows_def = [
+        (1.0, "Chiffre d'affaires",            "ca",   "total"),
+        (2.0, "− Charges variables",           "cv",   "charge"),
+        (2.5, "= Marge sur coût variable",     "mcv",  "solde"),
+        (3.0, "− Charges fixes",               "cf",   "charge"),
+        (3.5, "= Résultat d'exploitation",     "re",   "solde"),
+        (4.0, "± Résultat financier",          "rf",   "neutre"),
+        (4.5, "= Résultat courant avant IS",   "rcai", "solde"),
+        (5.0, "± Résultat exceptionnel",       "rex",  "neutre"),
+        (6.0, "− Impôt sur les sociétés",      "is_",  "charge"),
+        (7.0, "= Résultat net",                "rn",   "solde_final"),
+    ]
+    _rows = []
+    for (_o, _lib, _k, _typ) in _rows_def:
+        _reel, _bdg = budget_calc[_k]
+        if _typ == "charge":
+            _reel_aff, _bdg_aff = -_reel, -_bdg
+        else:
+            _reel_aff, _bdg_aff = _reel, _bdg
+        _rows.append({
+            "Ordre":   _o,
+            "Libellé": _lib,
+            "Réel N-1": _reel_aff,
+            "Budget N": _bdg_aff,
+            "Écart €": _bdg_aff - _reel_aff,
+            "Écart %": _ecart_pct(_bdg, _reel),
+            "% CA":    (_bdg_aff / _ca_bdg) if _ca_bdg else None,
+            "_type":   _typ,
+        })
+
+    _tbl = pd.DataFrame(_rows)
+    _types_by_idx = _tbl["_type"].to_dict()
+    _display = _tbl.drop(columns=["_type"])
+    _ncols = len(_display.columns)
+
+    def _fmt_v(v):
+        if v is None or pd.isna(v):
+            return ""
+        return fmt(v)
+
+    def _fmt_p(v):
+        if v is None or pd.isna(v):
+            return ""
+        return f"{v:+.1%}"
+
+    def _style(row):
+        t = _types_by_idx.get(row.name, "")
+        if t == "solde_final":
+            return ["background-color: #1e40af; color: white; font-weight: 700"] * _ncols
+        if t == "solde":
+            return ["background-color: #dbeafe; color: #1e3a8a; font-weight: 600"] * _ncols
+        if t == "charge":
+            return ["color: #b91c1c"] * _ncols
+        return [""] * _ncols
+
+    _styler = (
+        _display.style
+        .format({
+            "Réel N-1": _fmt_v, "Budget N": _fmt_v, "Écart €": _fmt_v,
+            "Écart %": _fmt_p, "% CA": _fmt_p,
+            "Ordre":   lambda v: f"{v:.1f}",
+        })
+        .apply(_style, axis=1)
+        .hide(axis="index")
+    )
+    budget_tbl_html = mo.Html(_styler.to_html())
+    return (budget_tbl_html,)
+
+
+@app.cell(hide_code=True)
+def _(budget_calc):
+    # Waterfall compare Reel N-1 vs Budget N sur les soldes cles
+    _rows = []
+    for _k, _lbl in [("ca", "CA"), ("mcv", "MCV"), ("re", "Rés. expl."),
+                     ("rcai", "RCAI"), ("rn", "Rés. net")]:
+        _reel, _bdg = budget_calc[_k]
+        _rows.append({"poste": _lbl, "type": "Réel N-1", "montant": float(_reel)})
+        _rows.append({"poste": _lbl, "type": "Budget N", "montant": float(_bdg)})
+    _df = pd.DataFrame(_rows)
+
+    if budget_calc["ca"][0] == 0 and budget_calc["ca"][1] == 0:
+        budget_chart = mo.md("_Pas de donnees pour le graphique._")
+    else:
+        _chart = (
+            alt.Chart(_df)
+            .mark_bar()
+            .encode(
+                x=alt.X("poste:N", sort=["CA", "MCV", "Rés. expl.", "RCAI", "Rés. net"],
+                        title="", axis=alt.Axis(labelAngle=0)),
+                xOffset="type:N",
+                y=alt.Y("montant:Q", title="Montant (€)", axis=alt.Axis(format=",.0f")),
+                color=alt.Color(
+                    "type:N",
+                    scale=alt.Scale(domain=["Réel N-1", "Budget N"],
+                                    range=["#94a3b8", "#1e40af"]),
+                    legend=alt.Legend(title="", orient="top"),
+                ),
+                tooltip=[
+                    alt.Tooltip("poste:N", title="Poste"),
+                    alt.Tooltip("type:N", title="Type"),
+                    alt.Tooltip("montant:Q", title="Montant", format=",.0f"),
+                ],
+            )
+            .properties(title="Réel N-1 vs Budget N — Postes clés", height=340, width="container")
+        )
+        budget_chart = _chart
+    return (budget_chart,)
+
+
+@app.cell(hide_code=True)
+def _(budget_scenario_id, budget_slider_charges, budget_slider_revenus):
+    budget_save_btn = mo.ui.run_button(
+        label="💾 Sauvegarder ces taux",
+        kind="success",
+        full_width=False,
+    )
+    return (budget_save_btn,)
+
+
+@app.cell(hide_code=True)
+def _(budget_save_btn, budget_scenario_id, budget_slider_charges, budget_slider_revenus):
+    if budget_save_btn.value and budget_scenario_id:
+        db_query(
+            """UPDATE budget_regle_globale
+               SET taux_revenus = %s, taux_charges = %s
+               WHERE scenario_id = %s::uuid""",
+            (budget_slider_revenus.value, budget_slider_charges.value, budget_scenario_id),
+        )
+        budget_save_msg = mo.callout(
+            f"✓ Scenario sauvegarde : revenus +{budget_slider_revenus.value}%, charges +{budget_slider_charges.value}%",
+            kind="success",
+        )
+    else:
+        budget_save_msg = mo.md("")
+    return (budget_save_msg,)
+
+
+@app.cell(hide_code=True)
+def _(
+    budget_calc, budget_chart, budget_save_btn, budget_save_msg,
+    budget_scenario_id, budget_slider_charges, budget_slider_revenus,
+    budget_tbl_html, entite_nom, is_groupe,
+):
+    if is_groupe:
+        budget_tab = mo.callout(
+            "Le budget se calcule par **structure**, pas au niveau consolide. "
+            "Selectionnez une structure specifique (STIVMAT, STA, HMA, ETPA) dans la sidebar.",
+            kind="warn",
+        )
+    elif not budget_scenario_id:
+        budget_tab = mo.callout("Scenario budget introuvable.", kind="danger")
+    elif budget_calc["ca"][0] == 0:
+        budget_tab = mo.callout(
+            f"Aucune donnee reelle N-1 pour {entite_nom}. "
+            f"Le budget se calcule sur le reel N-1 : verifiez l'annee de reference.",
+            kind="info",
+        )
+    else:
+        budget_tab = mo.vstack(
+            [
+                mo.md(f"### Budget CRD — {entite_nom}"),
+                mo.md("Ajustez les taux de variation (applique sur le reel N-1). Le tableau et le graphique se mettent a jour automatiquement."),
+                mo.hstack(
+                    [budget_slider_revenus, budget_slider_charges],
+                    widths="equal",
+                    gap=1,
+                ),
+                budget_tbl_html,
+                budget_chart,
+                mo.hstack([budget_save_btn, budget_save_msg], justify="start", gap=1),
+            ],
+            gap=1,
+        )
+    return (budget_tab,)
+
+
 # ── PAGE 6 : SQL LIBRE (creation textarea) ──────────────────────
 
 @app.cell(hide_code=True)
@@ -1019,12 +1338,13 @@ def _(sql_input):
 # ── TABS (assemblage final) ─────────────────────────────────────
 
 @app.cell(hide_code=True)
-def _(bf_tab, crd_tab, overview_tab, sql_tab):
+def _(bf_tab, budget_tab, crd_tab, overview_tab, sql_tab):
     mo.ui.tabs(
         {
             "Vue d'ensemble": overview_tab,
             "CRD Réel": crd_tab,
             "Bilan Fonctionnel": bf_tab,
+            "Budget CRD": budget_tab,
             "SQL libre": sql_tab,
         },
     )
