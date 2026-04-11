@@ -78,15 +78,17 @@ h2 {
 }
 
 h3 {
-    color: var(--hma-text-muted) !important;
-    font-weight: 600 !important;
-    font-size: 0.75rem !important;
-    letter-spacing: 0.08em !important;
-    text-transform: uppercase !important;
-    margin-top: 2rem !important;
-    margin-bottom: 0.9rem !important;
-    padding: 0 !important;
+    color: var(--hma-text) !important;
+    font-weight: 700 !important;
+    font-size: 0.95rem !important;
+    letter-spacing: -0.01em !important;
+    text-transform: none !important;
+    margin-top: 1.75rem !important;
+    margin-bottom: 0.75rem !important;
+    padding-bottom: 0.5rem !important;
     border: none !important;
+    border-bottom: 2px solid var(--hma-primary-light) !important;
+    display: inline-block;
 }
 
 /* ══ TOP BAR (tablist) ════════════════════════════════════════════ */
@@ -97,18 +99,18 @@ h3 {
     left: calc(var(--left-column-width, 260px) + 1rem) !important;
     right: 220px !important;
     z-index: 100 !important;
-    background: rgba(255, 255, 255, 0.92) !important;
-    backdrop-filter: blur(14px) saturate(180%);
-    -webkit-backdrop-filter: blur(14px) saturate(180%);
+    background: #ffffff !important;
+    backdrop-filter: blur(8px) saturate(180%);
+    -webkit-backdrop-filter: blur(8px) saturate(180%);
     border: 1px solid var(--hma-border) !important;
     border-radius: var(--hma-radius-lg) !important;
     gap: 0.15rem !important;
     margin: 0 !important;
-    padding: 0.35rem 0.75rem !important;
+    padding: 0.35rem 0.5rem !important;
     display: flex !important;
     align-items: center;
-    height: 44px;
-    box-shadow: var(--hma-shadow-sm);
+    height: 46px;
+    box-shadow: var(--hma-shadow-md);
     overflow: visible !important;
 }
 
@@ -335,21 +337,14 @@ aside > div:last-child {
     background: var(--hma-card);
     border: 1px solid var(--hma-border);
     border-radius: var(--hma-radius-lg);
-    padding: 1.25rem 1.25rem 0.75rem 1.25rem;
+    padding: 1rem 1rem 0.5rem 1rem;
     box-shadow: var(--hma-shadow-xs);
     margin: 0.35rem 0 !important;
     transition: box-shadow 0.2s ease;
-    min-height: 340px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-[class*="altair"] > *,
-[class*="vega-embed"] > * {
     width: 100%;
 }
 
+/* Les charts Altair fixent leur propre height -> on laisse respirer, pas de flex centering */
 [class*="altair"]:hover,
 [class*="vega-embed"]:hover {
     box-shadow: var(--hma-shadow-sm);

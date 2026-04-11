@@ -570,9 +570,9 @@ def _(charges_donut, evolution_chart, kpi_row, structure_chart):
             mo.md("### Structure et repartition"),
             mo.hstack(
                 [charges_donut, structure_chart],
-                widths=[1, 2],
+                widths="equal",
                 gap=2,
-                align="center",
+                align="start",
             ),
             mo.md("### Evolution mensuelle"),
             evolution_chart,
@@ -992,7 +992,7 @@ def _(bf_n):
                     alt.Tooltip("montant:Q", title="Montant", format=",.0f"),
                 ],
             )
-            .properties(title="Structure fonctionnelle — Emplois vs Ressources", height=180, width="container")
+            .properties(title="Structure fonctionnelle — Emplois vs Ressources", height=260, width="container")
         )
         bf_chart = _chart
     return (bf_chart,)
