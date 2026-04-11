@@ -31,11 +31,15 @@
 | Nom | Description | URL | Statut | Tech |
 |---|---|---|---|---|
 | Odoo 18 | ERP / CRM open-source | [odoo.hma.business](https://odoo.hma.business) | ✅ Actif | Python / Docker |
-| Apache Superset | BI / Data Visualization | [superset.hma.business](https://superset.hma.business) | ✅ Actif | Python / Docker |
 | n8n | Workflow Automation | [n8n.hma.business](https://n8n.hma.business) | ✅ Actif | Node.js / Docker |
-| ~~Metabase~~ | ~~BI / Analytics~~ | ~~metabase.hma.business~~ | 🗑️ Supprimé | Redondant avec Apache Superset |
-| Appsmith | Low-code app builder / saisie / mapping | [appsmith.hma.business](https://appsmith.hma.business) | ✅ Actif | Node.js / Docker — remplace Budibase & NocoDB |
 | pgAdmin 4 | Administration PostgreSQL | [pgadmin.hma.business](https://pgadmin.hma.business) | ✅ Actif | Python / Docker |
+| **hma-streamlit** | Dashboard checks rapides comptabilité (11 pages) | [streamlit.hma.business](https://streamlit.hma.business) | ✅ Actif | Streamlit + pg8000 / Docker |
+| **hma-marimo** | Notebook réactif exploration comptable | [marimo.hma.business](https://marimo.hma.business) | ✅ Actif | Marimo + Altair / Docker |
+| **hma-toolbox** | API ETL FastAPI (sync Pennylane pour n8n) | interne `http://hma-toolbox:8000` | ✅ Actif | FastAPI / Docker (réseau coolify) |
+| Apache Superset | BI / Data Visualization | [superset.hma.business](https://superset.hma.business) | ⏸️ Suspendu | Stoppé 2026-04-11 — libérer RAM |
+| Metabase | BI / Analytics | — | ⏸️ Suspendu | Stoppé 2026-04-11 — libérer RAM |
+| Appsmith | Low-code app builder / saisie / mapping | [appsmith.hma.business](https://appsmith.hma.business) | ⏸️ Suspendu | Stoppé 2026-04-11 — libérer RAM |
+| ~~hma-dashboard~~ | ~~Dashboard Dash/Plotly CRD+BF+Budget~~ | ~~dashboard.hma.business~~ | 🗑️ Supprimé | Supprimé 2026-04-11 — remplacé par Marimo + Streamlit |
 | ~~Supabase~~ | ~~BaaS (Auth, DB, Storage, Realtime)~~ | ~~supabase.hma.business~~ | 🗑️ Supprimé | Remplacé par PostgreSQL standalone |
 | ~~Teable~~ | ~~Interface tableur / No-code~~ | ~~teable.hma.business~~ | 🗑️ Supprimé | Redondant — exploration via Superset SQL Lab |
 | ~~NocoDB~~ | ~~Interface tableur~~ | ~~nocodb.hma.business~~ | 🗑️ Supprimé | Remplacé par Appsmith |
@@ -118,7 +122,16 @@ Copier-coller ce bloc dans la section appropriée lors de l'ajout d'un nouveau s
 | 2026-04 | pgAdmin 4 | Déployé via Coolify | `pgadmin.hma.business` — administration PostgreSQL HMA |
 | 2026-04 | hma-agents | Projet Coolify créé | Projet dédié aux agents IA (HMAGENTS) |
 | 2026-04 | HMAGENTS | Scaffolding | CrewAI + LlamaIndex + mem0 + Claude + FastAPI — `agents.hma.business` |
+| 2026-04-10 | hma-dashboard | Déployé | Dashboard Dash/Plotly CRD+BF+Budget — `dashboard.hma.business` |
+| 2026-04-10 | hma-marimo | Déployé | Notebook réactif exploration comptable — `marimo.hma.business` |
+| 2026-04-10 | hma-streamlit | Séparation depuis hma-toolbox | Dashboard Streamlit isolé — `streamlit.hma.business` |
+| 2026-04-10 | hma-toolbox | Nettoyage | Retire Streamlit, garde seulement FastAPI ETL |
+| 2026-04-11 | hma-dashboard | Supprimé | Feedback utilisateur — redondant avec Marimo + Streamlit |
+| 2026-04-11 | Metabase | Mis en pause | Stoppé (image conservée) — libérer RAM VPS |
+| 2026-04-11 | Apache Superset | Mis en pause | Stoppé (image conservée) — libérer RAM VPS |
+| 2026-04-11 | Appsmith | Mis en pause | Stoppé (image conservée) — libérer RAM VPS |
+| 2026-04-11 | HMAGENTS | Fix import crew.py | `tool_sql_fec` → `tool_sql_ecritures_detail` (aligné avec rename tools_sql.py) |
 
 ---
 
-*Dernière mise à jour : Avril 2026 — HMA* · Coolify ✅ `coolify.hma.business`
+*Dernière mise à jour : 11 avril 2026 — HMA* · Coolify ✅ `coolify.hma.business`
