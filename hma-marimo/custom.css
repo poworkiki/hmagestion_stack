@@ -732,3 +732,27 @@ main table {
     background: var(--hma-primary-light);
     color: var(--hma-primary-dark);
 }
+
+/* ══ BADGE VERSION BETA (bas droite) ═════════════════════════════ */
+
+body::after {
+    content: "Version Beta créée par GABISERVICES";
+    position: fixed;
+    bottom: 12px;
+    right: 14px;
+    z-index: 90;
+    font-family: "Inter", -apple-system, sans-serif;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--hma-text-subtle);
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--hma-border);
+    border-radius: var(--hma-radius-sm);
+    padding: 0.35rem 0.7rem;
+    box-shadow: var(--hma-shadow-xs);
+    letter-spacing: -0.005em;
+    pointer-events: none;
+    user-select: none;
+}
