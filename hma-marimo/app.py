@@ -701,126 +701,267 @@ def _(crd_drill, crd_drill_cat, crd_tbl_html, crd_waterfall, date_ref_str):
     return (crd_tab,)
 
 
-# ── PAGE 5 : BILAN FONCTIONNEL ──────────────────────────────────
+# ── PAGE 3 : BILAN FONCTIONNEL (refait avec drilldown) ──────────
+
+@app.function
+def bf_fetch(annee_val, entite_id_val):
+    _clauses = ["annee = %s"]
+    _params = [annee_val]
+    if entite_id_val:
+        _clauses.insert(0, "entite_id = %s::uuid")
+        _params.insert(0, entite_id_val)
+    _df = db_query(
+        f"SELECT bf_categorie, SUM(montant) AS montant "
+        f"FROM v_bilan_fonctionnel WHERE {' AND '.join(_clauses)} "
+        f"GROUP BY bf_categorie",
+        tuple(_params),
+    )
+    out = {
+        "emplois_stables": 0.0, "ressources_stables": 0.0,
+        "bfr_exploit": 0.0, "bfr_hors_exploit": 0.0,
+        "tresorerie_active": 0.0, "tresorerie_passive": 0.0,
+    }
+    for _, r in _df.iterrows():
+        out[r["bf_categorie"]] = float(r["montant"] or 0)
+    return out
+
 
 @app.cell(hide_code=True)
-def _(annee, entite_id):
-    _clauses_bf = ["annee = %s"]
-    _params_bf = [annee]
-    if entite_id:
-        _clauses_bf.insert(0, "entite_id = %s::uuid")
-        _params_bf.insert(0, entite_id)
-    _df_bf = db_query(f"""
-        SELECT bf_categorie, SUM(montant) AS montant
-        FROM v_bilan_fonctionnel
-        WHERE {' AND '.join(_clauses_bf)}
-        GROUP BY bf_categorie
-    """, tuple(_params_bf))
+def _(annee, annee_prev, entite_id):
+    bf_n = bf_fetch(annee, entite_id)
+    bf_p = bf_fetch(annee_prev, entite_id)
+    return (bf_n, bf_p)
 
-    if _df_bf.empty:
-        bf_tab = mo.callout("Aucune donnee Bilan Fonctionnel.", kind="info")
+
+@app.cell(hide_code=True)
+def _(bf_n, bf_p):
+    frng_n = bf_n["ressources_stables"] - bf_n["emplois_stables"]
+    bfr_n  = bf_n["bfr_exploit"] + bf_n["bfr_hors_exploit"]
+    tn_n   = bf_n["tresorerie_active"] - bf_n["tresorerie_passive"]
+    frng_p = bf_p["ressources_stables"] - bf_p["emplois_stables"]
+    bfr_p  = bf_p["bfr_exploit"] + bf_p["bfr_hors_exploit"]
+    tn_p   = bf_p["tresorerie_active"] - bf_p["tresorerie_passive"]
+
+    ecart = abs(frng_n - (bfr_n + tn_n))
+    equilibre_ok = ecart < 1
+
+    def _kstat(label, cur, prev, caption_static):
+        d = delta_pct(cur, prev)
+        if d is None:
+            return mo.stat(label=label, value=fmt(cur), caption=caption_static, bordered=True)
+        return mo.stat(
+            label=label, value=fmt(cur),
+            caption=f"{caption_static} · {d:+.1%} vs N-1",
+            direction="increase" if d >= 0 else "decrease",
+            bordered=True,
+        )
+
+    bf_kpi = mo.hstack(
+        [
+            _kstat("FRNG", frng_n, frng_p, "Ressources − Emplois stables"),
+            _kstat("BFR",  bfr_n,  bfr_p,  "Besoin en fonds de roulement"),
+            _kstat("Trésorerie Nette", tn_n, tn_p, "Actif − Passif circulant"),
+        ],
+        widths="equal",
+        gap=1,
+    )
+
+    bf_verif = (
+        mo.callout(
+            f"✓ Équilibre vérifié : FRNG ({fmt(frng_n)}) = BFR ({fmt(bfr_n)}) + TN ({fmt(tn_n)})",
+            kind="success",
+        )
+        if equilibre_ok else
+        mo.callout(f"✗ Déséquilibre : écart de {fmt(ecart)} entre FRNG et BFR+TN", kind="warn")
+    )
+    return (bf_kpi, bf_verif, bfr_n, frng_n, tn_n)
+
+
+@app.cell(hide_code=True)
+def _(bf_n):
+    # Tableau structure EMPLOIS | RESSOURCES (format bilan classique)
+    _emplois = [
+        ("Emplois stables",       bf_n["emplois_stables"],  "stable"),
+        ("BFR exploitation",      bf_n["bfr_exploit"],      "bfr"),
+        ("BFR hors exploitation", bf_n["bfr_hors_exploit"], "bfr"),
+        ("Trésorerie active",     bf_n["tresorerie_active"], "treso"),
+    ]
+    _ressources = [
+        ("Ressources stables",    bf_n["ressources_stables"], "stable"),
+        ("Trésorerie passive",    bf_n["tresorerie_passive"], "treso"),
+        ("", 0, ""),
+        ("", 0, ""),
+    ]
+    _total_e = sum(v for _, v, _ in _emplois)
+    _total_r = sum(v for _, v, _ in _ressources)
+
+    _rows = []
+    for (le, ve, te), (lr, vr, tr) in zip(_emplois, _ressources):
+        _rows.append({
+            "Emplois": le, "Montant E": ve if le else None,
+            "Ressources": lr, "Montant R": vr if lr else None,
+            "_type_e": te, "_type_r": tr,
+        })
+    _rows.append({
+        "Emplois": "TOTAL EMPLOIS", "Montant E": _total_e,
+        "Ressources": "TOTAL RESSOURCES", "Montant R": _total_r,
+        "_type_e": "total", "_type_r": "total",
+    })
+    _df = pd.DataFrame(_rows)
+    _types_e = _df["_type_e"].tolist()
+    _types_r = _df["_type_r"].tolist()
+    _display = _df.drop(columns=["_type_e", "_type_r"])
+
+    def _fmt_amount(v):
+        if v is None or pd.isna(v):
+            return ""
+        return fmt(v)
+
+    def _color_row(row):
+        idx = row.name
+        te, tr = _types_e[idx], _types_r[idx]
+        styles = []
+        for col in _display.columns:
+            if col in ("Emplois", "Montant E"):
+                t = te
+            else:
+                t = tr
+            if t == "total":
+                styles.append("background-color: #1e40af; color: white; font-weight: 700")
+            elif t == "stable":
+                styles.append("background-color: #dbeafe; color: #1e3a8a; font-weight: 600")
+            elif t == "treso":
+                styles.append("background-color: #fef3c7; color: #92400e")
+            elif t == "bfr":
+                styles.append("background-color: #f3e8ff; color: #6b21a8")
+            else:
+                styles.append("")
+        return styles
+
+    _styler = (
+        _display.style
+        .format({"Montant E": _fmt_amount, "Montant R": _fmt_amount})
+        .apply(_color_row, axis=1)
+        .hide(axis="index")
+    )
+    bf_table_html = mo.Html(_styler.to_html())
+    return (bf_table_html,)
+
+
+@app.cell(hide_code=True)
+def _(bf_n):
+    _labels = {
+        "emplois_stables":   ("Emplois stables",       "emplois"),
+        "bfr_exploit":       ("BFR exploitation",      "emplois"),
+        "bfr_hors_exploit":  ("BFR hors exploitation", "emplois"),
+        "tresorerie_active": ("Trésorerie active",     "emplois"),
+        "ressources_stables":("Ressources stables",    "ressources"),
+        "tresorerie_passive":("Trésorerie passive",    "ressources"),
+    }
+    _rows = []
+    for k, (label, cote) in _labels.items():
+        val = bf_n.get(k, 0)
+        if val == 0:
+            continue
+        _rows.append({"categorie": label, "montant": float(val), "cote": cote})
+    if not _rows:
+        bf_chart = mo.md("_Pas de donnees._")
     else:
-        _bf = {r["bf_categorie"]: float(r["montant"]) for _, r in _df_bf.iterrows()}
-        _frng = _bf.get("ressources_stables", 0) - _bf.get("emplois_stables", 0)
-        _bfr = _bf.get("bfr_exploit", 0) + _bf.get("bfr_hors_exploit", 0)
-        _tn = _bf.get("tresorerie_active", 0) - _bf.get("tresorerie_passive", 0)
-        _ecart = abs(_frng - (_bfr + _tn))
-        _ok = _ecart < 1
-
-        _kpi = mo.hstack(
-            [
-                mo.stat(label="FRNG", value=fmt(_frng), caption="Ressources - Emplois stables", bordered=True),
-                mo.stat(label="BFR", value=fmt(_bfr), caption="Besoin en fonds de roulement", bordered=True),
-                mo.stat(label="Tresorerie Nette", value=fmt(_tn), caption="Actif - Passif circulant", bordered=True),
-            ],
-            widths="equal",
-            gap=1,
-        )
-
-        _verif = (
-            mo.callout(f"✓ FRNG = BFR + TN ({fmt(_frng)} = {fmt(_bfr)} + {fmt(_tn)})", kind="success")
-            if _ok else
-            mo.callout(f"✗ Equilibre : ecart de {fmt(_ecart)}", kind="warn")
-        )
-
-        _labels_bf = {
-            "emplois_stables": "Emplois stables",
-            "ressources_stables": "Ressources stables",
-            "bfr_exploit": "BFR exploitation",
-            "bfr_hors_exploit": "BFR hors exploitation",
-            "tresorerie_active": "Tresorerie active",
-            "tresorerie_passive": "Tresorerie passive",
-        }
-
-        _df_chart = pd.DataFrame([
-            {"categorie": _labels_bf.get(k, k), "montant": float(v)}
-            for k, v in _bf.items()
-        ])
-
-        _chart_bf = (
-            alt.Chart(_df_chart)
+        _df = pd.DataFrame(_rows)
+        _chart = (
+            alt.Chart(_df)
             .mark_bar()
             .encode(
-                y=alt.Y("categorie:N", sort="-x", title=""),
-                x=alt.X("montant:Q", title="Montant (€)", axis=alt.Axis(format=",.0f")),
-                color=alt.condition(
-                    alt.datum.montant > 0,
-                    alt.value("#2c5282"),
-                    alt.value("#c53030"),
+                y=alt.Y("cote:N", title="", axis=alt.Axis(labelAngle=0)),
+                x=alt.X("montant:Q", title="Montant (€)", axis=alt.Axis(format=",.0f"), stack="zero"),
+                color=alt.Color(
+                    "categorie:N",
+                    scale=alt.Scale(scheme="tableau10"),
+                    legend=alt.Legend(title="", orient="bottom", columns=3),
                 ),
                 tooltip=[
-                    alt.Tooltip("categorie:N", title="Categorie"),
+                    alt.Tooltip("categorie:N", title="Catégorie"),
                     alt.Tooltip("montant:Q", title="Montant", format=",.0f"),
                 ],
             )
-            .properties(
-                title="Structure du bilan fonctionnel",
-                height=280,
-                width="container",
-            )
+            .properties(title="Structure fonctionnelle — Emplois vs Ressources", height=180, width="container")
         )
+        bf_chart = _chart
+    return (bf_chart,)
 
-        _clauses_dr = ["annee = %s", "bf_categorie IS NOT NULL"]
-        _params_dr = [annee]
+
+@app.cell(hide_code=True)
+def _():
+    bf_drill_cat = mo.ui.dropdown(
+        options=[
+            "(aucun)",
+            "emplois_stables",
+            "ressources_stables",
+            "bfr_exploit",
+            "bfr_hors_exploit",
+            "tresorerie_active",
+            "tresorerie_passive",
+        ],
+        value="(aucun)",
+        label="Drilldown catégorie BF",
+        full_width=True,
+    )
+    return (bf_drill_cat,)
+
+
+@app.cell(hide_code=True)
+def _(annee, bf_drill_cat, entite_id):
+    if bf_drill_cat.value == "(aucun)":
+        bf_drill = mo.md("_Sélectionnez une catégorie ci-dessus pour voir les comptes PCG détaillés._")
+    else:
+        # Sens d'affichage : emplois = debit - credit, ressources = credit - debit
+        _is_emplois = bf_drill_cat.value in (
+            "emplois_stables", "bfr_exploit", "bfr_hors_exploit", "tresorerie_active"
+        )
+        _sens = "debit - credit" if _is_emplois else "credit - debit"
+        _clauses = ["annee = %s", "bf_categorie = %s"]
+        _params = [annee, bf_drill_cat.value]
         if entite_id:
-            _clauses_dr.insert(0, "entite_id = %s::uuid")
-            _params_dr.insert(0, entite_id)
-        _df_drill = db_query(f"""
-            SELECT bf_categorie, compte_numero, compte_libelle,
-                SUM(CASE
-                    WHEN bf_categorie IN ('emplois_stables','bfr_exploit','bfr_hors_exploit','tresorerie_active')
-                    THEN debit - credit ELSE credit - debit END) AS montant
+            _clauses.insert(0, "entite_id = %s::uuid")
+            _params.insert(0, entite_id)
+        _df = db_query(f"""
+            SELECT compte_numero, compte_libelle,
+                   SUM({_sens}) AS montant,
+                   COUNT(*) AS nb_ecritures
             FROM grand_livre
-            WHERE {' AND '.join(_clauses_dr)}
-            GROUP BY bf_categorie, compte_numero, compte_libelle
-            HAVING ABS(SUM(debit - credit)) > 0
-            ORDER BY bf_categorie, ABS(SUM(debit - credit)) DESC
-        """, tuple(_params_dr))
-
-        if _df_drill.empty:
-            _drill = mo.md("_Pas de detail disponible._")
+            WHERE {' AND '.join(_clauses)}
+            GROUP BY compte_numero, compte_libelle
+            HAVING ABS(SUM({_sens})) > 0
+            ORDER BY ABS(SUM({_sens})) DESC
+        """, tuple(_params))
+        if _df.empty:
+            bf_drill = mo.callout("Aucun compte dans cette catégorie.", kind="info")
         else:
-            _df_drill["montant"] = _df_drill["montant"].astype(float)
-            _drill = mo.ui.table(
-                _df_drill,
-                selection=None,
-                pagination=True,
-                page_size=20,
+            _df["montant"] = _df["montant"].astype(float)
+            bf_drill = mo.ui.table(
+                _df, selection=None, pagination=True, page_size=15,
                 format_mapping={"montant": lambda v: fmt(v)},
-                label=f"{len(_df_drill)} comptes",
+                label=f"{len(_df)} comptes · {bf_drill_cat.value}",
             )
+    return (bf_drill,)
 
-        bf_tab = mo.vstack(
-            [
-                mo.md("### Indicateurs de structure financiere"),
-                _kpi,
-                _verif,
-                _chart_bf,
-                mo.md("### Detail par compte"),
-                _drill,
-            ],
-            gap=1,
-        )
+
+@app.cell(hide_code=True)
+def _(bf_chart, bf_drill, bf_drill_cat, bf_kpi, bf_table_html, bf_verif, date_ref_str):
+    bf_tab = mo.vstack(
+        [
+            mo.md(f"### Bilan Fonctionnel" + (f" · au {date_ref_str}" if date_ref_str else "")),
+            bf_kpi,
+            bf_verif,
+            mo.md("### Structure Emplois / Ressources"),
+            bf_table_html,
+            bf_chart,
+            mo.md("### Drilldown par catégorie"),
+            bf_drill_cat,
+            bf_drill,
+        ],
+        gap=1,
+    )
     return (bf_tab,)
 
 
