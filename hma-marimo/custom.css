@@ -262,18 +262,28 @@ aside > div:last-child {
     margin-bottom: 1rem;
 }
 
-/* ── Tabs — Top bar sticky ── */
+/* ── Tabs — Top bar fixed aligne avec le bouton Download ── */
 [role="tablist"] {
-    position: sticky !important;
+    position: fixed !important;
     top: 0 !important;
+    left: var(--sidebar-width, 260px) !important;
+    right: 200px !important;
     z-index: 100 !important;
     background: var(--hma-card) !important;
     border-bottom: 1px solid var(--hma-border) !important;
     gap: 0 !important;
-    margin: -1.25rem -2rem 1.5rem -2rem !important;
-    padding: 0.5rem 2rem 0 2rem !important;
+    margin: 0 !important;
+    padding: 0.25rem 1.5rem 0 1.5rem !important;
     box-shadow: 0 1px 4px rgba(16, 24, 40, 0.04);
     backdrop-filter: blur(8px);
+    display: flex !important;
+    align-items: center;
+    height: 44px;
+}
+
+/* Pousser le contenu principal sous la barre fixe */
+main {
+    padding-top: 3.5rem !important;
 }
 
 button[role="tab"] {
