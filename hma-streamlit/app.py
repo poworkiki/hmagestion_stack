@@ -170,98 +170,255 @@ st.divider()
 
 
 # ==========================================
-# PAGE 1 : TABLEAU DE BORD
+# PAGE 1 : TABLEAU DE BORD (refactor 2026-04-11)
 # ==========================================
 if page == "Tableau de bord":
-    st.subheader("Tableau de bord")
+    # Recuperer la date de reference (derniere ecriture avec donnees)
+    _date_ref = query_single(f"SELECT MAX(ecriture_date) FROM grand_livre WHERE {where_no_an}")
+    _date_ref_str = _date_ref.strftime('%d/%m/%Y') if _date_ref else '—'
 
-    nb_comptes = query_single(f"SELECT COUNT(DISTINCT compte_numero) FROM grand_livre WHERE {where}")
-    total_debit = query_single(f"SELECT COALESCE(SUM(debit), 0) FROM grand_livre WHERE {where}")
-    total_credit = query_single(f"SELECT COALESCE(SUM(credit), 0) FROM grand_livre WHERE {where}")
+    st.subheader(f"Tableau de bord · {_filtre_label}")
+    st.caption(f"Données au **{_date_ref_str}**")
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Comptes", f"{nb_comptes:,}")
-    c2.metric("Total Debit", fmt(total_debit))
-    c3.metric("Total Credit", fmt(total_credit))
+    # --- KPI clés (marge + croissance) ---
+    _ca = float(_kpi_ca or 0)
+    _charges = float(_kpi_charges or 0)
+    _resultat = float(_kpi_resultat_net or 0)
+    _taux_marge = (_resultat / _ca * 100) if _ca > 0 else 0
 
-    # Resultat par structure
-    st.subheader("Resultat net par structure")
-    data = query_dicts(f"""
-        SELECT entite_code,
-            ROUND(SUM(CASE WHEN classe = 7 THEN credit - debit ELSE 0 END)::numeric, 0) AS produits,
-            ROUND(SUM(CASE WHEN classe = 6 THEN debit - credit ELSE 0 END)::numeric, 0) AS charges,
-            ROUND(SUM(CASE WHEN classe = 7 THEN credit - debit ELSE 0 END)
-                - SUM(CASE WHEN classe = 6 THEN debit - credit ELSE 0 END), 0) AS resultat
-        FROM grand_livre WHERE {where_no_an}
-        GROUP BY entite_code ORDER BY entite_code
-    """)
+    # CA N-1 (meme periode)
+    _ca_n1 = 0
+    if selected_exercice not in ('Tous',) and selected_exercice.isdigit():
+        _prev_year = int(selected_exercice) - 1
+        _where_n1 = f"annee = {_prev_year} AND NOT is_a_nouveau"
+        if selected_structure != 'Toutes':
+            _where_n1 += f" AND entite_code = '{selected_structure}'"
+        if selected_mois != 'Tous':
+            _mois_num = int(selected_mois.split(' - ')[0])
+            _where_n1 += f" AND mois <= {_mois_num}"
+        _ca_n1 = float(query_single(
+            f"SELECT COALESCE(SUM(credit - debit), 0) FROM grand_livre WHERE {_where_n1} AND compte_numero LIKE '70%'"
+        ) or 0)
 
-    if data:
-        codes = [d['entite_code'] for d in data]
-        produits = [float(d['produits']) for d in data]
-        charges = [float(d['charges']) for d in data]
-        resultats = [float(d['resultat']) for d in data]
+    _delta_ca = ((_ca - _ca_n1) / _ca_n1 * 100) if _ca_n1 > 0 else None
 
-        opts = {
-            "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"},
-                        "valueFormatter": JS_FMT},
-            "legend": {"bottom": 0},
-            "grid": {"bottom": "15%", "containLabel": True},
-            "xAxis": {"type": "category", "data": codes},
-            "yAxis": {"type": "value"},
-            "series": [
-                {"name": "Produits", "type": "bar", "stack": "total", "data": produits,
-                 "itemStyle": {"color": "#91cc75"}},
-                {"name": "Charges", "type": "bar", "stack": "total",
-                 "data": [-c for c in charges], "itemStyle": {"color": "#ee6666"}},
-                {"name": "Resultat", "type": "line", "data": resultats,
-                 "itemStyle": {"color": "#5470c6"}, "lineStyle": {"width": 3}},
+    m1, m2, m3 = st.columns(3)
+    m1.metric(
+        "Taux de marge",
+        f"{_taux_marge:.1f} %",
+        help="Résultat net / CA",
+    )
+    m2.metric(
+        "CA vs N-1",
+        f"{_delta_ca:+.1f} %" if _delta_ca is not None else "—",
+        help=f"CA {selected_exercice if selected_exercice != 'Tous' else ''} vs année précédente",
+    )
+    _nb_jours = query_single(f"SELECT COUNT(DISTINCT ecriture_date) FROM grand_livre WHERE {where_no_an}")
+    m3.metric(
+        "Jours avec activité",
+        f"{_nb_jours or 0}",
+        help="Nombre de jours distincts avec écritures sur la période",
+    )
+
+    st.divider()
+
+    # ============================================================
+    # GRAPHIQUE 1 : Waterfall formation du résultat
+    # ============================================================
+    st.subheader("Formation du résultat")
+    st.caption("CA → Charges → Résultat net")
+
+    _wf_data = [
+        {"name": "CA", "value": round(_ca, 0)},
+        {"name": "Charges", "value": -round(_charges, 0)},
+        {"name": "Résultat", "value": round(_resultat, 0)},
+    ]
+
+    wf_opts = {
+        "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}, "valueFormatter": JS_FMT},
+        "grid": {"left": "3%", "right": "4%", "bottom": "3%", "containLabel": True},
+        "xAxis": {"type": "category", "data": ["CA", "Charges", "Résultat"]},
+        "yAxis": {"type": "value", "axisLabel": {"formatter": JS_FMT}},
+        "series": [{
+            "type": "bar",
+            "data": [
+                {"value": round(_ca, 0), "itemStyle": {"color": "#3182ce"}},
+                {"value": -round(_charges, 0), "itemStyle": {"color": "#e53e3e"}},
+                {"value": round(_resultat, 0),
+                 "itemStyle": {"color": "#38a169" if _resultat >= 0 else "#c53030"}},
             ],
-        }
-        st_echarts(options=opts, height="400px", theme="streamlit")
+            "label": {"show": True, "position": "top", "formatter": JS_FMT},
+        }],
+    }
+    st_echarts(options=wf_opts, height="320px", theme="streamlit")
 
-    # CA mensuel
-    st.subheader("CA mensuel (comptes 70x)")
-    ca_data = query_dicts(f"""
-        SELECT mois_label, ROUND(SUM(credit - debit)::numeric, 0) AS ca
+    # ============================================================
+    # GRAPHIQUE 2 : Comparaison par structure (si pas filtré)
+    # ============================================================
+    if selected_structure == 'Toutes':
+        st.subheader("Comparaison par structure")
+        st.caption("CA vs Charges vs Résultat pour chaque structure")
+
+        _where_struct = where_no_an.replace("1=1 AND ", "").replace("1=1", "1=1")
+        data_struct = query_dicts(f"""
+            SELECT entite_code,
+                ROUND(SUM(CASE WHEN compte_numero LIKE '70%' THEN credit - debit ELSE 0 END)::numeric, 0) AS ca,
+                ROUND(SUM(CASE WHEN classe = 6 THEN debit - credit ELSE 0 END)::numeric, 0) AS charges,
+                ROUND(SUM(CASE WHEN classe = 7 THEN credit - debit ELSE 0 END)
+                    - SUM(CASE WHEN classe = 6 THEN debit - credit ELSE 0 END), 0) AS resultat
+            FROM grand_livre WHERE {where_no_an}
+            GROUP BY entite_code ORDER BY entite_code
+        """)
+
+        if data_struct:
+            codes = [d['entite_code'] for d in data_struct]
+            ca_vals = [float(d['ca']) for d in data_struct]
+            ch_vals = [float(d['charges']) for d in data_struct]
+            res_vals = [float(d['resultat']) for d in data_struct]
+
+            struct_opts = {
+                "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}, "valueFormatter": JS_FMT},
+                "legend": {"top": 0, "data": ["CA", "Charges", "Résultat"]},
+                "grid": {"top": "15%", "bottom": "5%", "containLabel": True},
+                "xAxis": {"type": "category", "data": codes},
+                "yAxis": {"type": "value", "axisLabel": {"formatter": JS_FMT}},
+                "series": [
+                    {"name": "CA", "type": "bar", "data": ca_vals,
+                     "itemStyle": {"color": "#3182ce"}},
+                    {"name": "Charges", "type": "bar", "data": ch_vals,
+                     "itemStyle": {"color": "#e53e3e"}},
+                    {"name": "Résultat", "type": "bar", "data": res_vals,
+                     "itemStyle": {"color": "#38a169"}},
+                ],
+            }
+            st_echarts(options=struct_opts, height="350px", theme="streamlit")
+
+    # ============================================================
+    # GRAPHIQUE 3 : Évolution mensuelle CA + N-1
+    # ============================================================
+    st.subheader("Évolution mensuelle du CA")
+    _compare_year = (selected_exercice.isdigit() and int(selected_exercice) - 1 >= 2022)
+    if _compare_year:
+        st.caption(f"Comparaison {selected_exercice} vs {int(selected_exercice) - 1}")
+    else:
+        st.caption("Sélectionne un exercice pour comparer avec l'année précédente")
+
+    # Data N (periode actuelle)
+    _where_n = where_no_an
+    ca_n_data = query_dicts(f"""
+        SELECT mois, mois_nom, ROUND(SUM(credit - debit)::numeric, 0) AS ca
         FROM grand_livre
-        WHERE {where_no_an} AND compte_numero LIKE '70%'
-        GROUP BY mois_label, annee, mois
-        ORDER BY annee, mois
+        WHERE {_where_n} AND compte_numero LIKE '70%'
+        GROUP BY mois, mois_nom ORDER BY mois
     """)
 
-    if ca_data:
-        mois = [d['mois_label'] for d in ca_data]
-        ca_vals = [float(d['ca']) for d in ca_data]
+    if ca_n_data:
+        mois_labels = [d['mois_nom'][:3] for d in ca_n_data]
+        ca_n_vals = [float(d['ca']) for d in ca_n_data]
 
-        bar_data = []
-        for v in ca_vals:
-            color = "#91cc75" if v >= 0 else "#ee6666"
-            bar_data.append({"value": v, "itemStyle": {"color": color}})
+        # Données N-1 (si comparaison possible)
+        ca_n1_vals = []
+        if _compare_year:
+            _where_prev = f"annee = {int(selected_exercice) - 1} AND NOT is_a_nouveau"
+            if selected_structure != 'Toutes':
+                _where_prev += f" AND entite_code = '{selected_structure}'"
+            ca_prev_data = query_dicts(f"""
+                SELECT mois, ROUND(SUM(credit - debit)::numeric, 0) AS ca
+                FROM grand_livre
+                WHERE {_where_prev} AND compte_numero LIKE '70%'
+                GROUP BY mois ORDER BY mois
+            """)
+            _prev_map = {d['mois']: float(d['ca']) for d in ca_prev_data}
+            ca_n1_vals = [_prev_map.get(d['mois'], 0) for d in ca_n_data]
 
-        ca_opts = {
-            "tooltip": {"trigger": "axis",
-                        "valueFormatter": JS_FMT},
-            "xAxis": {"type": "category", "data": mois, "axisLabel": {"rotate": 45}},
-            "yAxis": {"type": "value"},
-            "dataZoom": [{"type": "inside"}, {"type": "slider", "height": 20, "bottom": 5}],
-            "grid": {"bottom": "18%", "containLabel": True},
-            "series": [{"type": "bar", "data": bar_data}],
+        # Moyenne N
+        _avg_n = sum(ca_n_vals) / len(ca_n_vals) if ca_n_vals else 0
+
+        series = [
+            {"name": f"CA {selected_exercice if selected_exercice != 'Tous' else ''}",
+             "type": "bar", "data": ca_n_vals,
+             "itemStyle": {"color": "#3182ce"}},
+            {"name": "Moyenne", "type": "line", "data": [_avg_n] * len(mois_labels),
+             "itemStyle": {"color": "#d69e2e"}, "lineStyle": {"width": 2, "type": "dashed"},
+             "symbol": "none"},
+        ]
+        if _compare_year:
+            series.insert(1, {
+                "name": f"CA {int(selected_exercice) - 1}",
+                "type": "line", "data": ca_n1_vals,
+                "itemStyle": {"color": "#a0aec0"},
+                "lineStyle": {"width": 2},
+                "symbol": "circle", "symbolSize": 6,
+            })
+
+        evol_opts = {
+            "tooltip": {"trigger": "axis", "valueFormatter": JS_FMT},
+            "legend": {"top": 0},
+            "grid": {"top": "15%", "bottom": "5%", "containLabel": True},
+            "xAxis": {"type": "category", "data": mois_labels},
+            "yAxis": {"type": "value", "axisLabel": {"formatter": JS_FMT}},
+            "series": series,
         }
-        st_echarts(options=ca_opts, height="350px", theme="streamlit")
+        st_echarts(options=evol_opts, height="320px", theme="streamlit")
 
-    # Sync status
-    st.subheader("Etat synchronisation")
-    sync = query_dicts("""
-        SELECT e.code, sm.status, sm.last_sync_at, sm.row_count_local
-        FROM sync_metadata sm JOIN entite e ON e.id = sm.entite_id
-        WHERE sm.endpoint = 'ledger_entry_lines'
-        ORDER BY e.code
+    # ============================================================
+    # GRAPHIQUE 4 : Top 5 postes de charges (Pareto)
+    # ============================================================
+    st.subheader("Top 10 postes de charges")
+    st.caption("Où va l'argent — les 10 comptes de charges les plus importants")
+    top_charges = query_dicts(f"""
+        SELECT compte_numero, compte_libelle,
+            ROUND(SUM(debit - credit)::numeric, 0) AS montant
+        FROM grand_livre
+        WHERE {where_no_an} AND classe = 6
+        GROUP BY compte_numero, compte_libelle
+        HAVING SUM(debit - credit) > 0
+        ORDER BY SUM(debit - credit) DESC
+        LIMIT 10
     """)
-    if sync:
-        for s in sync:
-            icon = ":white_check_mark:" if s['status'] == 'done' else ":warning:"
-            st.write(f"{icon} **{s['code']}** — {s['row_count_local']} lignes — dernier sync: {s['last_sync_at']}")
+
+    if top_charges:
+        labels = [f"{c['compte_numero']} {(c['compte_libelle'] or '')[:30]}" for c in top_charges]
+        vals = [float(c['montant']) for c in top_charges]
+        labels.reverse()
+        vals.reverse()
+
+        pareto_opts = {
+            "tooltip": {"trigger": "axis", "axisPointer": {"type": "shadow"}, "valueFormatter": JS_FMT},
+            "grid": {"left": "25%", "right": "10%", "containLabel": True},
+            "xAxis": {"type": "value", "axisLabel": {"formatter": JS_FMT}},
+            "yAxis": {"type": "category", "data": labels, "axisLabel": {"fontSize": 11}},
+            "series": [{
+                "type": "bar",
+                "data": vals,
+                "itemStyle": {"color": "#e53e3e"},
+                "label": {"show": True, "position": "right", "formatter": JS_FMT},
+            }],
+        }
+        st_echarts(options=pareto_opts, height=f"{max(350, len(labels) * 35)}px", theme="streamlit")
+    else:
+        st.info("Aucun compte de charge pour cette sélection.")
+
+    # ============================================================
+    # Footer : etat sync discret
+    # ============================================================
+    st.divider()
+    with st.expander("État synchronisation Pennylane", expanded=False):
+        sync = query_dicts("""
+            SELECT e.code, sm.status, sm.last_sync_at, sm.row_count_local
+            FROM sync_metadata sm JOIN entite e ON e.id = sm.entite_id
+            WHERE sm.endpoint = 'ledger_entry_lines'
+            ORDER BY e.code
+        """)
+        if sync:
+            sync_cols = st.columns(len(sync))
+            for i, s in enumerate(sync):
+                icon = "✅" if s['status'] == 'done' else "⚠️"
+                sync_cols[i].metric(
+                    f"{icon} {s['code']}",
+                    f"{s['row_count_local']} écritures",
+                    help=f"Dernier sync : {s['last_sync_at']}",
+                )
 
 
 # ==========================================
