@@ -3,3 +3,6 @@ __pycache__
 .env
 *.sql
 .git
+app_streamlit.py
+entrypoint.sh
+.venv/
