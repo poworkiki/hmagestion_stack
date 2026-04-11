@@ -24,6 +24,13 @@ with app.setup:
     import psycopg2.extras
     import pandas as pd
     import altair as alt
+    from datetime import datetime, timezone, timedelta
+
+    TZ_GUYANE = timezone(timedelta(hours=-3))
+    JOURS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+    MOIS_FR = ["", "janvier", "fevrier", "mars", "avril", "mai", "juin",
+               "juillet", "aout", "septembre", "octobre", "novembre", "decembre"]
+    GROUPE_LABEL = "Groupe (consolide)"
 
 
 # ── UTILS ───────────────────────────────────────────────────────
@@ -112,9 +119,10 @@ def _():
 
 @app.cell(hide_code=True)
 def _(annee_list, entite_map):
+    _structure_options = [GROUPE_LABEL] + list(entite_map.keys())
     filtre_structure = mo.ui.dropdown(
-        options=list(entite_map.keys()),
-        value=list(entite_map.keys())[0] if entite_map else None,
+        options=_structure_options,
+        value=GROUPE_LABEL,
         label="Structure",
         full_width=True,
     )
@@ -141,6 +149,10 @@ def _(annee_list, entite_map):
         full_width=True,
     )
 
+    _now = datetime.now(TZ_GUYANE)
+    _date_str = f"{JOURS_FR[_now.weekday()]} {_now.day} {MOIS_FR[_now.month]} {_now.year}"
+    _heure_str = _now.strftime("%H:%M")
+
     mo.sidebar(
         [
             mo.md("# HMA"),
@@ -152,6 +164,13 @@ def _(annee_list, entite_map):
             filtre_trimestre,
             filtre_mois,
             mo.md("---"),
+            mo.md(
+                f"<div style='font-size:0.8rem; color:#6c757d; line-height:1.4;'>"
+                f"📅 <strong>{_date_str}</strong><br>"
+                f"🕐 {_heure_str} (heure Guyane)"
+                f"</div>"
+            ),
+            mo.md("---"),
             mo.md("### Legende"),
             mo.md(
                 "- **Solde** = montant net\n"
@@ -162,7 +181,7 @@ def _(annee_list, entite_map):
             mo.md("---"),
             mo.md("_Source : PostgreSQL HMA_"),
         ],
-        footer=mo.md("**HMA** 2026 · Marimo"),
+        footer=mo.md("**HMA** · Marimo · Gestion Guyane"),
     )
     return (filtre_annee, filtre_mois, filtre_structure, filtre_trimestre)
 
@@ -171,8 +190,10 @@ def _(annee_list, entite_map):
 
 @app.cell(hide_code=True)
 def _(entite_map, filtre_annee, filtre_mois, filtre_structure, filtre_trimestre):
-    entite_id = entite_map.get(filtre_structure.value, "")
-    entite_nom = filtre_structure.value or ""
+    _val = filtre_structure.value or GROUPE_LABEL
+    is_groupe = (_val == GROUPE_LABEL)
+    entite_id = None if is_groupe else entite_map.get(_val, "")
+    entite_nom = "Groupe" if is_groupe else _val
     annee = int(filtre_annee.value)
     annee_prev = annee - 1
     trimestre = filtre_trimestre.value
@@ -183,18 +204,26 @@ def _(entite_map, filtre_annee, filtre_mois, filtre_structure, filtre_trimestre)
         "Jul": 7, "Aou": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
     }
     mois_num = _mois_map.get(filtre_mois.value)
-    return (annee, annee_prev, entite_id, entite_nom, mois_num, trim_num, trimestre)
+    return (annee, annee_prev, entite_id, entite_nom, is_groupe, mois_num, trim_num, trimestre)
 
 
 # ── PAGE 1 : VUE D'ENSEMBLE (KPI + trends) ──────────────────────
 
 @app.cell(hide_code=True)
 def _(annee, annee_prev, entite_id, trim_num):
-    _where_trim = "AND trimestre = %s" if trim_num else ""
-    _params_n = (entite_id, annee, trim_num) if trim_num else (entite_id, annee)
-    _params_p = (entite_id, annee_prev, trim_num) if trim_num else (entite_id, annee_prev)
+    _clauses = ["annee = %s"]
+    _base_n = [annee]
+    _base_p = [annee_prev]
+    if entite_id:
+        _clauses.insert(0, "entite_id = %s::uuid")
+        _base_n.insert(0, entite_id)
+        _base_p.insert(0, entite_id)
+    if trim_num:
+        _clauses.append("trimestre = %s")
+        _base_n.append(trim_num)
+        _base_p.append(trim_num)
+    _where = " AND ".join(_clauses)
 
-    # Exercice courant
     _df_n = db_query(f"""
         SELECT
             SUM(ca) AS ca,
@@ -205,10 +234,9 @@ def _(annee, annee_prev, entite_id, trim_num):
             SUM(resultat_net) AS res_net,
             SUM(caf) AS caf
         FROM v_crd
-        WHERE entite_id = %s::uuid AND annee = %s {_where_trim}
-    """, _params_n)
+        WHERE {_where}
+    """, tuple(_base_n))
 
-    # Exercice precedent
     _df_p = db_query(f"""
         SELECT
             SUM(ca) AS ca,
@@ -216,8 +244,8 @@ def _(annee, annee_prev, entite_id, trim_num):
             SUM(resultat_net) AS res_net,
             SUM(caf) AS caf
         FROM v_crd
-        WHERE entite_id = %s::uuid AND annee = %s {_where_trim}
-    """, _params_p)
+        WHERE {_where}
+    """, tuple(_base_p))
 
     kpi_data = {
         "ca_n": float(_df_n.iloc[0]["ca"] or 0) if not _df_n.empty else 0,
@@ -236,7 +264,39 @@ def _(annee, annee_prev, entite_id, trim_num):
 
 
 @app.cell(hide_code=True)
-def _(kpi_data):
+def _(annee, entite_id):
+    _clauses = ["annee = %s", "NOT is_a_nouveau"]
+    _params = [annee]
+    if entite_id:
+        _clauses.insert(0, "entite_id = %s::uuid")
+        _params.insert(0, entite_id)
+    _df_dr = db_query(
+        f"SELECT MAX(ecriture_date) AS d FROM grand_livre WHERE {' AND '.join(_clauses)}",
+        tuple(_params),
+    )
+    if _df_dr.empty or _df_dr.iloc[0]["d"] is None:
+        date_ref = None
+        date_ref_str = ""
+    else:
+        date_ref = _df_dr.iloc[0]["d"]
+        date_ref_str = date_ref.strftime("%d/%m/%Y")
+    return (date_ref, date_ref_str)
+
+
+@app.cell(hide_code=True)
+def _(date_ref_str, kpi_data):
+    def _stat_ytd(label, cur, prev, higher=True):
+        d = delta_pct(cur, prev)
+        caption = f"YTD au {date_ref_str}" if date_ref_str else None
+        if d is not None:
+            caption = f"{caption} · {d:+.1%} vs N-1" if caption else f"{d:+.1%} vs N-1"
+            is_good = (d >= 0) if higher else (d <= 0)
+            return mo.stat(
+                label=label, value=fmt(cur), caption=caption,
+                direction="increase" if is_good else "decrease", bordered=True,
+            )
+        return mo.stat(label=label, value=fmt(cur), caption=caption, bordered=True)
+
     if kpi_data["ca_n"] == 0 and kpi_data["res_net_n"] == 0:
         kpi_row = mo.callout(
             "Aucune donnee pour cette selection (structure/exercice/periode).",
@@ -245,10 +305,10 @@ def _(kpi_data):
     else:
         kpi_row = mo.hstack(
             [
-                kpi_stat("Chiffre d'affaires", kpi_data["ca_n"], kpi_data["ca_p"]),
-                kpi_stat("Marge sur cout variable", kpi_data["mcv_n"], kpi_data["mcv_p"]),
-                kpi_stat("Resultat net", kpi_data["res_net_n"], kpi_data["res_net_p"]),
-                kpi_stat("CAF", kpi_data["caf_n"], kpi_data["caf_p"]),
+                _stat_ytd("Chiffre d'affaires", kpi_data["ca_n"], kpi_data["ca_p"]),
+                _stat_ytd("Marge sur cout variable", kpi_data["mcv_n"], kpi_data["mcv_p"]),
+                _stat_ytd("Resultat net", kpi_data["res_net_n"], kpi_data["res_net_p"]),
+                _stat_ytd("CAF", kpi_data["caf_n"], kpi_data["caf_p"]),
             ],
             widths="equal",
             gap=1,
@@ -330,18 +390,22 @@ def _(kpi_data):
 
 @app.cell(hide_code=True)
 def _(annee, entite_id):
-    _df_mensuel = db_query("""
+    _clauses = ["annee = %s", "NOT is_a_nouveau", "classe IN (6, 7)"]
+    _params = [annee]
+    if entite_id:
+        _clauses.insert(0, "entite_id = %s::uuid")
+        _params.insert(0, entite_id)
+    _df_mensuel = db_query(f"""
         SELECT mois, mois_label,
             SUM(CASE WHEN classe = 7 THEN credit - debit ELSE 0 END) AS produits,
             SUM(CASE WHEN classe = 6 THEN debit - credit ELSE 0 END) AS charges,
             SUM(CASE WHEN classe = 7 THEN credit - debit ELSE 0 END)
               - SUM(CASE WHEN classe = 6 THEN debit - credit ELSE 0 END) AS resultat
         FROM grand_livre
-        WHERE entite_id = %s::uuid AND annee = %s AND NOT is_a_nouveau
-          AND classe IN (6, 7)
+        WHERE {' AND '.join(_clauses)}
         GROUP BY mois, mois_label
         ORDER BY mois
-    """, (entite_id, annee))
+    """, tuple(_params))
 
     if _df_mensuel.empty:
         evolution_chart = mo.md("_Pas de donnees mensuelles._")
@@ -406,15 +470,21 @@ def _(evolution_chart, kpi_row, waterfall):
 
 @app.cell(hide_code=True)
 def _(annee, entite_id, mois_num):
-    _where_mois = "AND mois = %s" if mois_num else ""
-    _params = (entite_id, annee, mois_num) if mois_num else (entite_id, annee)
+    _clauses = ["annee = %s"]
+    _params = [annee]
+    if entite_id:
+        _clauses.insert(0, "entite_id = %s::uuid")
+        _params.insert(0, entite_id)
+    if mois_num:
+        _clauses.append("mois = %s")
+        _params.append(mois_num)
     _df_bg = db_query(f"""
         SELECT compte_numero, compte_libelle, classe, mois,
             solde, crd_categorie, bf_categorie
         FROM balance_generale
-        WHERE entite_id = %s::uuid AND annee = %s {_where_mois}
+        WHERE {' AND '.join(_clauses)}
         ORDER BY compte_numero, mois
-    """, _params)
+    """, tuple(_params))
 
     if _df_bg.empty:
         bg_tab = mo.callout("Aucune donnee pour cet exercice.", kind="info")
@@ -507,23 +577,24 @@ def _():
 @app.cell(hide_code=True)
 def _(annee, entite_id, gl_filtre_compte, mois_num):
     _compte = gl_filtre_compte.value.strip()
-    _parts = []
-    _params_list = [entite_id, annee]
+    _clauses = ["annee = %s"]
+    _params_list = [annee]
+    if entite_id:
+        _clauses.insert(0, "entite_id = %s::uuid")
+        _params_list.insert(0, entite_id)
     if _compte:
-        _parts.append("AND compte_numero LIKE %s")
+        _clauses.append("compte_numero LIKE %s")
         _params_list.append(f"{_compte}%")
     if mois_num:
-        _parts.append("AND mois = %s")
+        _clauses.append("mois = %s")
         _params_list.append(mois_num)
-    _where = " ".join(_parts)
 
     _df_gl = db_query(f"""
         SELECT ecriture_date, journal_code, ecriture_num,
             compte_numero, compte_libelle, piece_ref, ecriture_lib,
             debit, credit, (debit - credit) AS solde
         FROM grand_livre
-        WHERE entite_id = %s::uuid AND annee = %s
-            {_where}
+        WHERE {' AND '.join(_clauses)}
         ORDER BY ecriture_date DESC, ecriture_num
         LIMIT 500
     """, tuple(_params_list))
@@ -566,21 +637,23 @@ def _(annee, entite_id, gl_filtre_compte, mois_num):
 
 @app.cell(hide_code=True)
 def _(annee, entite_id, mois_num, trim_num):
-    _parts = []
-    _params_list = [entite_id, annee]
+    _clauses = ["annee = %s"]
+    _params_list = [annee]
+    if entite_id:
+        _clauses.insert(0, "entite_id = %s::uuid")
+        _params_list.insert(0, entite_id)
     if trim_num:
-        _parts.append("AND trimestre = %s")
+        _clauses.append("trimestre = %s")
         _params_list.append(trim_num)
     if mois_num:
-        _parts.append("AND mois = %s")
+        _clauses.append("mois = %s")
         _params_list.append(mois_num)
-    _where = " ".join(_parts)
 
     _df_drill = db_query(f"""
         SELECT crd_categorie, crd_rubrique, compte_numero, compte_libelle,
             SUM(montant) AS montant
         FROM v_crd_drilldown
-        WHERE entite_id = %s::uuid AND annee = %s {_where}
+        WHERE {' AND '.join(_clauses)}
         GROUP BY crd_categorie, crd_rubrique, compte_numero, compte_libelle
         ORDER BY crd_categorie, ABS(SUM(montant)) DESC
     """, tuple(_params_list))
@@ -642,12 +715,17 @@ def _(annee, entite_id, mois_num, trim_num):
 
 @app.cell(hide_code=True)
 def _(annee, entite_id):
-    _df_bf = db_query("""
+    _clauses_bf = ["annee = %s"]
+    _params_bf = [annee]
+    if entite_id:
+        _clauses_bf.insert(0, "entite_id = %s::uuid")
+        _params_bf.insert(0, entite_id)
+    _df_bf = db_query(f"""
         SELECT bf_categorie, SUM(montant) AS montant
         FROM v_bilan_fonctionnel
-        WHERE entite_id = %s::uuid AND annee = %s
+        WHERE {' AND '.join(_clauses_bf)}
         GROUP BY bf_categorie
-    """, (entite_id, annee))
+    """, tuple(_params_bf))
 
     if _df_bf.empty:
         bf_tab = mo.callout("Aucune donnee Bilan Fonctionnel.", kind="info")
@@ -712,18 +790,22 @@ def _(annee, entite_id):
             )
         )
 
-        # Drilldown par compte
-        _df_drill = db_query("""
+        _clauses_dr = ["annee = %s", "bf_categorie IS NOT NULL"]
+        _params_dr = [annee]
+        if entite_id:
+            _clauses_dr.insert(0, "entite_id = %s::uuid")
+            _params_dr.insert(0, entite_id)
+        _df_drill = db_query(f"""
             SELECT bf_categorie, compte_numero, compte_libelle,
                 SUM(CASE
                     WHEN bf_categorie IN ('emplois_stables','bfr_exploit','bfr_hors_exploit','tresorerie_active')
                     THEN debit - credit ELSE credit - debit END) AS montant
             FROM grand_livre
-            WHERE entite_id = %s::uuid AND annee = %s AND bf_categorie IS NOT NULL
+            WHERE {' AND '.join(_clauses_dr)}
             GROUP BY bf_categorie, compte_numero, compte_libelle
             HAVING ABS(SUM(debit - credit)) > 0
             ORDER BY bf_categorie, ABS(SUM(debit - credit)) DESC
-        """, (entite_id, annee))
+        """, tuple(_params_dr))
 
         if _df_drill.empty:
             _drill = mo.md("_Pas de detail disponible._")
