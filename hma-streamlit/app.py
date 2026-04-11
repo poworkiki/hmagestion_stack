@@ -6,9 +6,20 @@ Usage local  : streamlit run hma-toolbox/app_streamlit.py
 Usage Docker : streamlit run /app/app_streamlit.py --server.port 8501 --server.address 0.0.0.0
 """
 import os
+from datetime import datetime, timezone, timedelta
 import streamlit as st
 import pg8000
 from streamlit_echarts import st_echarts, JsCode
+
+# Fuseau Guyane francaise (UTC-3, pas de DST)
+TZ_GUYANE = timezone(timedelta(hours=-3))
+JOURS_FR = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"]
+MOIS_FR = ["", "janvier", "fevrier", "mars", "avril", "mai", "juin",
+           "juillet", "aout", "septembre", "octobre", "novembre", "decembre"]
+
+def now_guyane():
+    """Datetime actuelle en heure locale Guyane."""
+    return datetime.now(TZ_GUYANE)
 
 def fmt(v):
     """Format montant : 1 000 000 €"""
@@ -136,6 +147,21 @@ page = st.sidebar.radio("Page", [
 ])
 
 st.sidebar.markdown("---")
+
+# Date et heure locale Guyane
+_now = now_guyane()
+_jour_fr = JOURS_FR[_now.weekday()]
+_mois_fr = MOIS_FR[_now.month]
+st.sidebar.markdown(
+    f"""
+    <div style='font-size:0.85rem; color:#6c757d; line-height:1.4;'>
+    📅 <strong>{_jour_fr} {_now.day} {_mois_fr} {_now.year}</strong><br>
+    🕐 {_now.strftime('%H:%M')} (heure Guyane)
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+st.sidebar.markdown("")
 st.sidebar.caption("HMA Gestion — Guyane")
 
 
