@@ -121,7 +121,13 @@ def _():
 # ── FILTRES + SIDEBAR (dans la meme cellule) ────────────────────
 
 @app.cell(hide_code=True)
-def _(annee_list, entite_map):
+def _():
+    get_live_mode, set_live_mode = mo.state(False)
+    return (get_live_mode, set_live_mode)
+
+
+@app.cell(hide_code=True)
+def _(annee_list, entite_map, set_live_mode):
     filtre_structure = mo.ui.multiselect(
         options=list(entite_map.keys()),
         value=[],
@@ -134,6 +140,7 @@ def _(annee_list, entite_map):
         value=[_current_year],
         label="Exercices (multi)",
         full_width=True,
+        on_change=lambda _v: set_live_mode(False),
     )
     filtre_mois = mo.ui.multiselect(
         options=[
@@ -143,11 +150,15 @@ def _(annee_list, entite_map):
         value=[],
         label="Mois (vide = tous)",
         full_width=True,
+        on_change=lambda _v: set_live_mode(False),
     )
-    filtre_refresh = mo.ui.refresh(
-        options=["manual", "30s", "1m", "5m", "15m"],
-        default_interval="manual",
-        label="Live",
+    def _activate_live(_v):
+        set_live_mode(True)
+        return True
+    live_btn = mo.ui.button(
+        label="🔴 Live — vue du jour",
+        on_click=_activate_live,
+        kind="danger",
     )
 
     _now = datetime.now(TZ_GUYANE)
@@ -164,7 +175,7 @@ def _(annee_list, entite_map):
             filtre_annee,
             filtre_mois,
             mo.md("---"),
-            filtre_refresh,
+            live_btn,
             mo.md("---"),
             mo.md(
                 f"<div style='font-size:0.8rem; color:#6c757d; line-height:1.4;'>"
@@ -185,45 +196,52 @@ def _(annee_list, entite_map):
         ],
         footer=mo.md("**HMA** · Gestion Guyane"),
     )
-    return (filtre_annee, filtre_mois, filtre_refresh, filtre_structure)
+    return (filtre_annee, filtre_mois, filtre_structure, live_btn)
 
 
 # ── FILTRES (lecture des valeurs — cellule separee) ─────────────
 
 @app.cell(hide_code=True)
-def _(annee_list, entite_map, filtre_annee, filtre_mois, filtre_refresh, filtre_structure):
+def _(annee_list, entite_map, filtre_annee, filtre_mois, filtre_structure, get_live_mode):
     _noms = filtre_structure.value or []
     is_groupe = (len(_noms) == 0)
     entite_ids = [entite_map[n] for n in _noms if n in entite_map]
     if is_groupe:
-        entite_id = None           # pour les cellules legacy mono-entite
+        entite_id = None
         entite_nom = "Groupe"
     elif len(_noms) == 1:
         entite_id = entite_ids[0]
         entite_nom = _noms[0]
     else:
-        entite_id = entite_ids[0]  # fallback pour pages mono-entite (Budget)
+        entite_id = entite_ids[0]
         entite_nom = " + ".join(_noms)
 
-    # Exercices (multi) : liste d'ints. Fallback a l'annee la plus recente si vide.
-    _annees_raw = filtre_annee.value or []
-    annees_sel = sorted([int(a) for a in _annees_raw], reverse=True)
-    if not annees_sel:
-        annees_sel = [annee_list[0]] if annee_list else [2026]
-    annee = annees_sel[0]                 # annee principale (max) pour pages mono-annee
-    annee_prev = annee - 1                 # pour delta vs N-1
+    live_mode = get_live_mode()
 
-    # Mois (multi) : liste d'ints 1-12. Vide = tous les mois.
-    _mois_map = {
-        "Jan": 1, "Fev": 2, "Mar": 3, "Avr": 4, "Mai": 5, "Jun": 6,
-        "Jul": 7, "Aou": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
-    }
-    mois_sel = [_mois_map[m] for m in (filtre_mois.value or []) if m in _mois_map]
+    if live_mode:
+        # Mode Live : force annee + mois = aujourd'hui (ecrase les multiselects)
+        _now = datetime.now(TZ_GUYANE)
+        annees_sel = [_now.year]
+        mois_sel = [_now.month]
+    else:
+        # Lecture normale des multiselects
+        _annees_raw = filtre_annee.value or []
+        annees_sel = sorted([int(a) for a in _annees_raw], reverse=True)
+        if not annees_sel:
+            annees_sel = [annee_list[0]] if annee_list else [2026]
+        _mois_map = {
+            "Jan": 1, "Fev": 2, "Mar": 3, "Avr": 4, "Mai": 5, "Jun": 6,
+            "Jul": 7, "Aou": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
+        }
+        mois_sel = [_mois_map[m] for m in (filtre_mois.value or []) if m in _mois_map]
 
-    # Tick pour forcer la re-execution des cellules de donnees (bouton Live)
-    refresh_tick = filtre_refresh.value
+    annee = annees_sel[0]
+    annee_prev = annee - 1
 
-    return (annee, annee_prev, annees_sel, entite_id, entite_ids, entite_nom, is_groupe, mois_sel, refresh_tick)
+    # Tick pour forcer la re-execution des cellules de donnees
+    refresh_tick = (live_mode, tuple(annees_sel), tuple(mois_sel), tuple(entite_ids))
+
+    return (annee, annee_prev, annees_sel, entite_id, entite_ids, entite_nom, is_groupe, live_mode, mois_sel, refresh_tick)
 
 
 # ── PAGE 1 : VUE D'ENSEMBLE (KPI + trends) ──────────────────────
