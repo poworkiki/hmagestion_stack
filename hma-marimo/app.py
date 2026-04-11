@@ -13,7 +13,7 @@ import marimo
 __generated_with = "0.13.0"
 app = marimo.App(
     width="full",
-    app_title="HMA — Exploration Comptable",
+    app_title="HMAnalytics",
     css_file="custom.css",
 )
 
@@ -93,7 +93,7 @@ def kpi_stat(label, current, previous=None, higher_is_better=True):
 def _():
     mo.md(
         r"""
-        # Exploration Comptable — HMA
+        # HMAnalytics
 
         Notebook reactif connecte a PostgreSQL HMA. Utilisez la sidebar pour
         selectionner une structure et un exercice. Les donnees se mettent a jour
@@ -156,7 +156,7 @@ def _(annee_list, entite_map):
     mo.sidebar(
         [
             mo.md("# HMA"),
-            mo.md("**Exploration Comptable**"),
+            mo.md("**HMAnalytics**"),
             mo.md("---"),
             mo.md("### Filtres"),
             filtre_structure,
@@ -181,7 +181,7 @@ def _(annee_list, entite_map):
             mo.md("---"),
             mo.md("_Source : PostgreSQL HMA_"),
         ],
-        footer=mo.md("**HMA** · Marimo · Gestion Guyane"),
+        footer=mo.md("**HMA** · Gestion Guyane"),
     )
     return (filtre_annee, filtre_mois, filtre_structure, filtre_trimestre)
 
