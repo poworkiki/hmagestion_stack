@@ -1,0 +1,26 @@
+services:
+  hma-streamlit:
+    build: .
+    container_name: hma-streamlit
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      - PG_HOST=${PG_HOST}
+      - PG_PORT=${PG_PORT:-5432}
+      - PG_USER=${PG_USER:-postgres}
+      - PG_PASSWORD=${PG_PASSWORD}
+      - PG_DATABASE=${PG_DATABASE:-postgres}
+    networks:
+      - coolify
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.hma-streamlit.rule=Host(`streamlit.hma.business`)"
+      - "traefik.http.routers.hma-streamlit.entrypoints=https"
+      - "traefik.http.routers.hma-streamlit.tls=true"
+      - "traefik.http.routers.hma-streamlit.tls.certresolver=letsencrypt"
+      - "traefik.http.services.hma-streamlit.loadbalancer.server.port=8501"
+
+networks:
+  coolify:
+    external: true
