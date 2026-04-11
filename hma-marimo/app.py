@@ -171,8 +171,8 @@ def _(filtre_annee, filtre_mois, filtre_structure, live_btn):
 
     mo.sidebar(
         [
-            mo.md("# HMA"),
-            mo.md("**HMAnalytics**"),
+            mo.image("logo_hma.png", width=160, rounded=False),
+            mo.md("<div style='text-align:center;font-weight:800;font-size:1.1rem;color:#2563eb;letter-spacing:-0.02em;margin-top:0.25rem;'>HMAnalytics</div>"),
             mo.md("---"),
             mo.md("### Filtres"),
             filtre_structure,

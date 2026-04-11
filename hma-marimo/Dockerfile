@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app.py .
 COPY custom.css .
+COPY logo_hma.png .
 
 EXPOSE 8080
 

@@ -163,7 +163,7 @@ aside.app-sidebar {
     border-right: 1px solid var(--hma-border) !important;
     color: var(--hma-text) !important;
     box-shadow: var(--hma-shadow-xs);
-    padding-top: 0.5rem;
+    padding-top: 1.25rem;
     /* Largeur fixe, desactivation auto-collapse marimo */
     width: var(--hma-sidebar-width) !important;
     min-width: var(--hma-sidebar-width) !important;
@@ -171,6 +171,12 @@ aside.app-sidebar {
     flex: 0 0 var(--hma-sidebar-width) !important;
     transition: none !important;
     display: block !important;
+}
+
+/* Logo centre */
+aside img {
+    display: block !important;
+    margin: 0 auto 0.75rem auto !important;
 }
 
 aside h1 {
