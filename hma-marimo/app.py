@@ -198,7 +198,12 @@ def _(filtre_annee, filtre_mois, filtre_structure, live_btn):
             mo.md("---"),
             mo.md("_Source : PostgreSQL HMA_"),
         ],
-        footer=mo.md("**HMA** · Gestion Guyane"),
+        footer=mo.md(
+            "<div style='text-align:center;font-size:0.7rem;color:#94a3b8;line-height:1.4;'>"
+            "<strong style='color:#64748b;'>HMA</strong> · Gestion Guyane<br>"
+            "<span style='font-size:0.65rem;'>Conçu par <strong style='color:#2563eb;'>gabiservices</strong></span>"
+            "</div>"
+        ),
     )
     return
 

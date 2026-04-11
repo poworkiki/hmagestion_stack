@@ -277,9 +277,6 @@ aside > div:last-child {
     color: var(--hma-text-subtle) !important;
     font-size: 0.72rem;
     padding-top: 0.75rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 /* ══ KPI CARDS (mo.stat) ══════════════════════════════════════════ */
