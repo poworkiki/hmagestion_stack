@@ -121,46 +121,64 @@ def _():
 # ── FILTRES + SIDEBAR (dans la meme cellule) ────────────────────
 
 @app.cell(hide_code=True)
-def _():
-    get_live_mode, set_live_mode = mo.state(False)
-    return (get_live_mode, set_live_mode)
+def _(annee_list):
+    _default_year = str(annee_list[0]) if annee_list else "2026"
+    get_years, set_years = mo.state([_default_year])
+    get_months, set_months = mo.state([])
+    return (get_months, get_years, set_months, set_years)
 
 
 @app.cell(hide_code=True)
-def _(annee_list, entite_map, set_live_mode):
+def _(annee_list, entite_map, get_months, get_years, set_months, set_years):
     filtre_structure = mo.ui.multiselect(
         options=list(entite_map.keys()),
         value=[],
         label="Structures (vide = Groupe)",
         full_width=True,
     )
-    _current_year = str(annee_list[0]) if annee_list else "2026"
     filtre_annee = mo.ui.multiselect(
         options=[str(a) for a in annee_list],
-        value=[_current_year],
+        value=get_years(),
         label="Exercices (multi)",
         full_width=True,
-        on_change=lambda _v: set_live_mode(False),
+        on_change=set_years,
     )
     filtre_mois = mo.ui.multiselect(
         options=[
             "Jan", "Fev", "Mar", "Avr", "Mai", "Jun",
             "Jul", "Aou", "Sep", "Oct", "Nov", "Dec",
         ],
-        value=[],
+        value=get_months(),
         label="Mois (vide = tous)",
         full_width=True,
-        on_change=lambda _v: set_live_mode(False),
+        on_change=set_months,
     )
+    return (filtre_annee, filtre_mois, filtre_structure)
+
+
+@app.cell(hide_code=True)
+def _(set_months, set_years):
+    _MOIS_LABELS = [
+        "Jan", "Fev", "Mar", "Avr", "Mai", "Jun",
+        "Jul", "Aou", "Sep", "Oct", "Nov", "Dec",
+    ]
+
     def _activate_live(_v):
-        set_live_mode(True)
+        _now = datetime.now(TZ_GUYANE)
+        set_years([str(_now.year)])
+        set_months([_MOIS_LABELS[_now.month - 1]])
         return True
+
     live_btn = mo.ui.button(
         label="🔴 Live — vue du jour",
         on_click=_activate_live,
         kind="danger",
     )
+    return (live_btn,)
 
+
+@app.cell(hide_code=True)
+def _(filtre_annee, filtre_mois, filtre_structure, live_btn):
     _now = datetime.now(TZ_GUYANE)
     _date_str = f"{JOURS_FR[_now.weekday()]} {_now.day} {MOIS_FR[_now.month]} {_now.year}"
     _heure_str = _now.strftime("%H:%M")
@@ -196,13 +214,13 @@ def _(annee_list, entite_map, set_live_mode):
         ],
         footer=mo.md("**HMA** · Gestion Guyane"),
     )
-    return (filtre_annee, filtre_mois, filtre_structure, live_btn)
+    return
 
 
 # ── FILTRES (lecture des valeurs — cellule separee) ─────────────
 
 @app.cell(hide_code=True)
-def _(annee_list, entite_map, filtre_annee, filtre_mois, filtre_structure, get_live_mode):
+def _(annee_list, entite_map, filtre_annee, filtre_mois, filtre_structure):
     _noms = filtre_structure.value or []
     is_groupe = (len(_noms) == 0)
     entite_ids = [entite_map[n] for n in _noms if n in entite_map]
@@ -216,32 +234,22 @@ def _(annee_list, entite_map, filtre_annee, filtre_mois, filtre_structure, get_l
         entite_id = entite_ids[0]
         entite_nom = " + ".join(_noms)
 
-    live_mode = get_live_mode()
-
-    if live_mode:
-        # Mode Live : force annee + mois = aujourd'hui (ecrase les multiselects)
-        _now = datetime.now(TZ_GUYANE)
-        annees_sel = [_now.year]
-        mois_sel = [_now.month]
-    else:
-        # Lecture normale des multiselects
-        _annees_raw = filtre_annee.value or []
-        annees_sel = sorted([int(a) for a in _annees_raw], reverse=True)
-        if not annees_sel:
-            annees_sel = [annee_list[0]] if annee_list else [2026]
-        _mois_map = {
-            "Jan": 1, "Fev": 2, "Mar": 3, "Avr": 4, "Mai": 5, "Jun": 6,
-            "Jul": 7, "Aou": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
-        }
-        mois_sel = [_mois_map[m] for m in (filtre_mois.value or []) if m in _mois_map]
+    _annees_raw = filtre_annee.value or []
+    annees_sel = sorted([int(a) for a in _annees_raw], reverse=True)
+    if not annees_sel:
+        annees_sel = [annee_list[0]] if annee_list else [2026]
+    _mois_map = {
+        "Jan": 1, "Fev": 2, "Mar": 3, "Avr": 4, "Mai": 5, "Jun": 6,
+        "Jul": 7, "Aou": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
+    }
+    mois_sel = [_mois_map[m] for m in (filtre_mois.value or []) if m in _mois_map]
 
     annee = annees_sel[0]
     annee_prev = annee - 1
 
-    # Tick pour forcer la re-execution des cellules de donnees
-    refresh_tick = (live_mode, tuple(annees_sel), tuple(mois_sel), tuple(entite_ids))
+    refresh_tick = (tuple(annees_sel), tuple(mois_sel), tuple(entite_ids))
 
-    return (annee, annee_prev, annees_sel, entite_id, entite_ids, entite_nom, is_groupe, live_mode, mois_sel, refresh_tick)
+    return (annee, annee_prev, annees_sel, entite_id, entite_ids, entite_nom, is_groupe, mois_sel, refresh_tick)
 
 
 # ── PAGE 1 : VUE D'ENSEMBLE (KPI + trends) ──────────────────────
