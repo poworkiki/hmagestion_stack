@@ -60,16 +60,34 @@ def query_single(sql):
 # --- Sidebar ---
 st.sidebar.title(":bar_chart: HMA Toolbox")
 
+# Exercice en cours = derniere annee presente en base
+_current_year_row = query_single(
+    "SELECT EXTRACT(year FROM MAX(ecriture_date))::int FROM grand_livre WHERE NOT is_a_nouveau"
+)
+_current_exercice = str(_current_year_row) if _current_year_row else '2026'
+
 structures = ['Toutes', 'HMA', 'STIVMAT', 'STA', 'ETPA']
-selected_structure = st.sidebar.selectbox("Structure", structures)
+selected_structure = st.sidebar.selectbox(
+    "Structure",
+    structures,
+    index=0,  # defaut : Toutes (Groupe)
+    help="Filtrer par structure ou afficher le consolide groupe",
+)
 
 exercices_data = query_dicts(
     "SELECT DISTINCT exercice_label FROM grand_livre ORDER BY exercice_label DESC"
 )
 exercice_options = ['Tous'] + [r['exercice_label'] for r in exercices_data]
-selected_exercice = st.sidebar.selectbox("Exercice", exercice_options)
+# Defaut : exercice en cours (2026)
+_default_ex_idx = exercice_options.index(_current_exercice) if _current_exercice in exercice_options else 0
+selected_exercice = st.sidebar.selectbox(
+    "Exercice",
+    exercice_options,
+    index=_default_ex_idx,
+    help="Defaut : exercice en cours (donnees YTD au jour j)",
+)
 
-# Filtre mois
+# Filtre mois (defaut : Tous = YTD depuis janvier jusqu aujourd hui)
 mois_options = ['Tous']
 if selected_exercice != 'Tous':
     mois_data = query_dicts(f"""
@@ -81,7 +99,12 @@ if selected_exercice != 'Tous':
 else:
     mois_data = query_dicts("SELECT DISTINCT mois, mois_nom FROM grand_livre ORDER BY mois")
     mois_options += [f"{d['mois']} - {d['mois_nom']}" for d in mois_data]
-selected_mois = st.sidebar.selectbox("Mois", mois_options)
+selected_mois = st.sidebar.selectbox(
+    "Mois",
+    mois_options,
+    index=0,  # defaut : Tous (= YTD tous mois de l exercice)
+    help="Defaut : tous les mois de l exercice (vue YTD)",
+)
 
 # Build WHERE clause
 def build_where():
