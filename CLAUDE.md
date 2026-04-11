@@ -29,14 +29,17 @@ Utilisateurs → HTTPS → Traefik (SSL Let's Encrypt) → Coolify → Conteneur
 - VPS principal (187.124.150.82) : Coolify HMA, tous les services métier
 - VPS secondaire (168.231.69.226) : anciens services en cours de migration
 
-**Stack de visualisation / saisie** :
-- **Superset** (`superset.hma.business`) : dashboards + SQL Lab (lecture seule). Driver `psycopg2-binary` installé via volume persistant (`PYTHONPATH=/app/superset_home/pip_packages`)
+**Stack de visualisation / saisie** (actif) :
+- **HMAnalytics** (`gestion.hma.business`) : dashboard comptable principal, notebook Marimo réactif avec 6 onglets (Vue d'ensemble, CRD Réel, Bilan Fonctionnel, Budget CRD, Budget Trésorerie, SQL libre). Voir section dédiée plus bas.
+- **Streamlit** (`streamlit.hma.business`) : dashboard checks rapides (11 pages), conteneur `hma-streamlit` séparé de `hma-toolbox`
 - **pgAdmin** (`pgadmin.hma.business`) : administration PostgreSQL
-- **Appsmith** (`appsmith.hma.business`) : saisie, formulaires, interfaces métier (écriture)
 
-Services supprimés (avril 2026) : Teable (redondant), Supabase self-hosted (remplacé par PostgreSQL standalone)
+**Stack de visualisation / saisie** (suspendu depuis 2026-04-11, stoppé pour libérer RAM VPS) :
+- ⏸️ Superset (`superset.hma.business`) — image conservée
+- ⏸️ Metabase — image conservée
+- ⏸️ Appsmith (`appsmith.hma.business`) — image conservée
 
-**Metabase** (`metabase.hma.business`) : BI alternative à Superset. Format euros français natif (`number.locale: "fr"`), drill-through natif avec Query Builder. Credentials dans Vaultwarden (`Metabase — HMA`). Connecté à PostgreSQL HMA via réseau Docker `coolify`. Skill : `/metabase-dashboard`.
+Services supprimés (avril 2026) : Teable, Supabase self-hosted, hma-dashboard (Dash/Plotly — remplacé par HMAnalytics + Streamlit).
 
 Inventaire complet des services et de leur statut : `docs/services.md`
 
@@ -562,6 +565,128 @@ FEATURE_FLAGS = {
 
 ---
 
+## HMAnalytics — hma-marimo (gestion.hma.business)
+
+Notebook Marimo réactif servant de **dashboard comptable principal**. 6 onglets : Vue d'ensemble · CRD Réel · Bilan Fonctionnel · Budget CRD · Budget Trésorerie · SQL libre.
+
+**Stack** : Marimo `>=0.13.0,<0.24` + Altair `>=5.4.1,<6` (pin obligatoire, voir bug plus bas) + pandas + psycopg2-binary.
+**Images** : `hma-marimo-hma-marimo:latest`, déployé sur VPS 187.124.150.82.
+**URL** : `https://gestion.hma.business` (Traefik + Let's Encrypt, network `coolify`).
+**Container** : `hma-marimo`, env `HMA_DB_URL` injecté via docker-compose.
+**Source** : `hma-marimo/app.py` + `hma-marimo/custom.css` (theme pro frontend ~500 lignes).
+
+### Règles Marimo non-négociables
+
+1. **Jamais `.value` dans la cellule qui crée l'UI** — sépare création et lecture en 2 cellules distinctes (sinon `RuntimeError`).
+2. **Variables privées** préfixées par `_` (ex: `_df`, `_tmp`) pour éviter `MultipleDefinitionError` entre cellules.
+3. **Helpers partagés** via `@app.function` (`db_query`, `fmt`, `delta_pct`, `bf_fetch`, `fetch_kpi_by_cat`) — globaux à toutes les cellules.
+4. **État partagé** via `mo.state()` — utilisé pour le bouton Live + multiselects bidirectionnels.
+5. **Charts Altair rendus directement** (pas de `mo.ui.altair_chart()` wrapper) — marimo 0.23.1 + Altair 5.5 ont un bug dans `_get_binned_fields` qui throw `AttributeError: 'list' object has no attribute 'get'` sur certains encodings. Contournement : passer le chart Altair natif à `mo.vstack` ou `mo.hstack` directement.
+6. **`db_query()` doit gérer INSERT/UPDATE sans RETURNING** : tester `cur.description is None` avant `cur.fetchall()` (sinon `ProgrammingError: no results to fetch`).
+
+### Structure des cellules (ordre de définition)
+
+```
+1. with app.setup:                        → imports + constants (TZ_GUYANE, JOURS_FR, GROUPE_LABEL)
+2. @app.function helpers                  → db_query, fmt, delta_pct, fetch_kpi_by_cat, bf_fetch, budget_*
+3. Options (entité_map, annee_list)       → chargées au démarrage
+4. mo.state pour get_years/set_years      → cellule dédiée
+5. Création multiselects                  → value=get_state(), on_change=set_state (bidirectionnel)
+6. Bouton Live (cellule séparée)          → on_click → set_years/set_months à aujourd'hui
+7. Sidebar assembly                       → mo.sidebar([...]) + logo + footer
+8. Parser filtres → variables             → annees_sel, mois_sel, entite_ids, annee, entite_id, is_groupe
+9. Cellules data par page                 → kpi_data, crd_n/p, bf_n/p, budget_calc, treso_calc
+10. Cellules rendu par page               → overview_tab, crd_tab, bf_tab, budget_tab, treso_tab, sql_tab (widgets)
+11. mo.ui.tabs({...})                     → assemblage final des 6 onglets
+```
+
+### Filtres globaux (variables partagées)
+
+| Variable | Type | Description |
+|---|---|---|
+| `entite_ids` | `list[str]` | UUIDs des structures sélectionnées. Vide = Groupe consolidé |
+| `entite_id` | `str \| None` | Premier UUID de la liste (fallback pour pages mono-entité : Budget) |
+| `is_groupe` | `bool` | True si aucune structure sélectionnée |
+| `annees_sel` | `list[int]` | Années sélectionnées (multi). Défaut = année courante |
+| `annee` | `int` | Première année (max) pour pages mono-année |
+| `annee_prev` | `int` | `annee - 1` pour delta vs N-1 |
+| `mois_sel` | `list[int]` | Mois sélectionnés 1-12. Vide = tous |
+
+Les requêtes SQL utilisent `entite_id = ANY(%s::uuid[])`, `annee = ANY(%s)`, `mois = ANY(%s)` pour supporter le multi-select.
+
+### Deploy workflow (hot-reload sans rebuild)
+
+```bash
+# 1. Edit local app.py ou custom.css
+# 2. Syntax check (obligatoire)
+python -c "import ast; ast.parse(open('hma-marimo/app.py',encoding='utf-8').read()); print('OK')"
+# 3. Push vers build dir sur VPS
+scp hma-marimo/app.py hma-marimo/custom.css root@187.124.150.82:/tmp/hma-marimo-build/hma-marimo/
+# 4. Hot-copy dans le container (pas de rebuild)
+ssh root@187.124.150.82 "docker cp /tmp/hma-marimo-build/hma-marimo/app.py hma-marimo:/app/app.py && docker cp /tmp/hma-marimo-build/hma-marimo/custom.css hma-marimo:/app/custom.css && docker restart hma-marimo"
+# 5. Test Playwright avec ?v=N (bypass cache browser)
+# URL : https://gestion.hma.business/?v=42
+```
+
+### Commandes de debug
+
+```bash
+# Logs live
+ssh root@187.124.150.82 "docker logs hma-marimo --follow"
+
+# Trouver la dernière erreur Python
+ssh root@187.124.150.82 "docker logs hma-marimo --since 2m 2>&1 | grep -B2 -A5 'Traceback\|Error' | tail -30"
+
+# Vérifier app_title / version déployée
+ssh root@187.124.150.82 "docker exec hma-marimo grep app_title /app/app.py"
+
+# Inspecter Shadow DOM via Playwright (marimo rend les tabs en Web Components)
+# querySelectorAll('[role=tablist]') retourne 0 → il faut walker les shadowRoot
+```
+
+### CSS (hma-marimo/custom.css)
+
+Thème pro frontend, ~500 lignes. Points critiques :
+- Sidebar marimo forcée à **288px fixe** via `--hma-sidebar-width` + `width !important` sur `aside.app-sidebar` (sinon marimo a une classe `auto-collapse-nav` qui change dynamiquement la largeur)
+- Top bar `[role="tablist"]` en `position: fixed; top: 12px` aligné sur `calc(var(--hma-sidebar-width) + 1rem)`
+- Bouton Download marimo caché (`div.fixed.right-0.top-0.z-50 { display: none }`)
+- Bouton collapse sidebar caché (`aside.app-sidebar > div.absolute[z-20] { display: none }`)
+- Wrapper marimo `div[class*="xl:px-24"]` forcé à `padding: 1.5rem` (sinon gap de 96px sur la droite)
+- Charts Altair/Vega : `height: 380px` fixe + `overflow: hidden` pour uniformiser les 3 cards de la Vue d'ensemble
+
+### Skills dédiés
+
+- `.claude/commands/marimo-create.md` — template + règles
+- `.claude/commands/marimo-debug.md` — 10 erreurs Marimo courantes + fix
+- `.claude/commands/marimo-deploy.md` — workflow Docker/Coolify
+
+Référentiel exhaustif : `docs/marimo-reference.md` (1 709 lignes), `docs/marimo-templates.md` (1 929 lignes).
+
+---
+
+## Vues SQL YTD vs Solde à date (convention fondamentale)
+
+Règle comptable française : **comptes de flux** (classes 6-7) = YTD cumulatif depuis le 1er janvier, **comptes de stock** (classes 1-5) = solde à date incluant les à-nouveaux. Ne jamais mélanger.
+
+| Famille | Granularité | Usage | À-nouveaux |
+|---|---|---|---|
+| `v_resultat_journalier` / `_mensuel` / `_trimestriel` / `_annuel` | Mouvements **isolés** par période (non cumulatifs) | "CA de mars", "Charges du T2" | Exclus |
+| `v_ytd_journalier`, `v_ytd_cumule` (mensuel) | Cumul **vrai** depuis 1er janvier + `ca_projete_annuel`, `taux_marge_ytd_pct` | Dashboards YTD + projection | Exclus |
+| `v_solde_a_date`, `v_solde_a_date_journalier` | Solde cumulatif depuis ouverture compte | Bilan, trésorerie, encours clients/fournisseurs | **Inclus** |
+
+**Deprecated** (garder pour backward compat, ne pas utiliser pour du nouveau code) :
+- `v_ytd_mensuel/trimestriel/annuel` (mal nommés : ce sont des agrégations par période, **pas** des cumuls YTD — préférer `v_resultat_*`)
+
+**Erreur classique** : utiliser `v_ytd_mensuel` en croyant avoir du cumul YTD. Utiliser `v_ytd_cumule` à la place.
+
+Fichiers SQL :
+- `sql/03-views/015-vues-cumul.sql` — `v_resultat_mensuel`, `v_ytd_cumule`
+- `sql/03-views/016-vue-cumul-journalier.sql` — `v_resultat_journalier`, `v_ytd_journalier`
+- `sql/03-views/017-vues-resultat-trim-annuel.sql` — `v_resultat_trimestriel`, `v_resultat_annuel`
+- `sql/03-views/018-vue-solde-a-date.sql` — `v_solde_a_date`, `v_solde_a_date_journalier`
+
+---
+
 ## Projet en cours : Agent IA comptable
 
 Voir `docs/presentation-agent-ia-hma.md` pour la présentation complète.
@@ -573,9 +698,34 @@ Artefacts Spec-Kit dans `specs/001-agent-ia-comptable/` (spec, plan, tasks, rese
 |---|---|---|
 | **A** | Socle données : FEC, Balance, Bilan, CR, SIG (PostgreSQL HMA + Qdrant `kb_pcg_analytique`) | 🚧 En cours |
 | **B** | Dashboards Superset (consomment les vues du chantier A) | 🚧 En cours |
-| **C** | Budget + saisie Appsmith + tables override V/F | ⬜ |
+| **C** | Budget multi-scénarios + cascade d'overrides + DSO/DPO/DIO trésorerie | 🚧 En cours (socle SQL déployé + onglets Marimo Budget CRD + Budget Trésorerie) |
 | **D** | Système multi-agents (5 agents n8n) | ⬜ |
 | **E** | Mémoire agents (Qdrant `agent_mem_*` + feedback) | ⬜ |
+
+### Chantier C — Système budget (déployé avril 2026)
+
+**Tables** (`sql/01-schema/011-budget.sql`) — cascade d'overrides du plus général au plus spécifique :
+```
+budget_scenario                       (multi-hypothèses par entité/année, brouillon/validé)
+  └─ budget_regle_globale             (taux par défaut : revenus +10%, charges +5%)
+     └─ budget_override_categorie     (override par crd_categorie)
+        └─ budget_override_compte     (taux OU valeur fixe annuelle — plus spécifique)
+  └─ budget_tresorerie_parametres     (DSO/DPO/DIO + mode montant_direct/hybride)
+```
+
+**Vues** :
+- `v_budget_crd` (`sql/03-views/019-v-budget-crd.sql`) : applique la cascade `compte > catégorie > global` sur le réel de l'année de référence. Colonnes : `montant_reel`, `taux_effectif`, `source_override`, `montant_budget`, `ecart_budget`.
+- `v_budget_tresorerie` (`sql/03-views/020-v-budget-tresorerie.sql`) : projection BFR et TN en 3 modes :
+  - `taux_jours` : BFR = (CA_HT × 1.20 / 365 × DSO) + (Achats_HT / 365 × DIO) − (Achats_HT × 1.20 / 365 × DPO)
+  - `montant_direct` : BFR cible et TN cible saisis directement en euros
+  - `hybride` : DSO/DPO/DIO + override montant si renseigné
+  TN projetée = FRNG_réel + Résultat_budget − BFR_budget
+
+**Consommation** : HMAnalytics → onglets Budget CRD et Budget Trésorerie, sliders réactifs avec bouton Save qui UPDATE les tables.
+
+**Règle critique** : le budget est **mono-entité**. Si "Groupe consolidé" est sélectionné dans la sidebar, les pages Budget affichent un warning et demandent à l'utilisateur de choisir une structure spécifique.
+
+**Scenario par défaut** : HMAnalytics crée automatiquement un scenario "Central {annee}" par entité × année à la première visite via `budget_get_or_create_scenario()`.
 
 ### Architecture multi-agents (5 agents, orchestrés par n8n)
 
