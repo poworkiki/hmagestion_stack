@@ -38,6 +38,30 @@ body {
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
+/* ── Main content padding (plus d'air autour du contenu) ── */
+main {
+    padding: 1.25rem 2rem 3rem 2rem !important;
+    max-width: 100%;
+}
+
+/* ── Spacing des vstacks/hstacks (respirer) ── */
+[data-orientation="vertical"] > * + *,
+main > div > * + * {
+    margin-top: 0.25rem;
+}
+
+/* KPI row : plus d'air entre les cards */
+[data-orientation="horizontal"] {
+    gap: 1.25rem !important;
+}
+
+/* Blocs charts : marges verticales */
+[class*="altair"],
+[class*="vega"] {
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.5rem !important;
+}
+
 /* ── Titres ── */
 h1 {
     color: var(--hma-text) !important;

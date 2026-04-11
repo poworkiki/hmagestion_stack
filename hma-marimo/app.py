@@ -230,9 +230,11 @@ def _(annee, annee_prev, entite_id, trim_num):
             SUM(mcv) AS mcv,
             SUM(charges_variables) AS cv,
             SUM(charges_fixes) AS cf,
+            SUM(resultat_financier) AS rf,
+            SUM(resultat_exceptionnel) AS rex,
+            SUM(impot_sur_societes) AS is_,
             SUM(resultat_exploitation) AS res_exp,
-            SUM(resultat_net) AS res_net,
-            SUM(caf) AS caf
+            SUM(resultat_net) AS res_net
         FROM v_crd
         WHERE {_where}
     """, tuple(_base_n))
@@ -241,26 +243,69 @@ def _(annee, annee_prev, entite_id, trim_num):
         SELECT
             SUM(ca) AS ca,
             SUM(mcv) AS mcv,
-            SUM(resultat_net) AS res_net,
-            SUM(caf) AS caf
+            SUM(charges_variables) AS cv,
+            SUM(charges_fixes) AS cf,
+            SUM(resultat_net) AS res_net
         FROM v_crd
         WHERE {_where}
     """, tuple(_base_p))
 
+    def _pick(df, col):
+        return float(df.iloc[0][col] or 0) if not df.empty else 0.0
+
+    _cv_n = _pick(_df_n, "cv")
+    _cf_n = _pick(_df_n, "cf")
+    _is_n = _pick(_df_n, "is_")
+    _cv_p = _pick(_df_p, "cv")
+    _cf_p = _pick(_df_p, "cf")
+
     kpi_data = {
-        "ca_n": float(_df_n.iloc[0]["ca"] or 0) if not _df_n.empty else 0,
-        "mcv_n": float(_df_n.iloc[0]["mcv"] or 0) if not _df_n.empty else 0,
-        "cv_n": float(_df_n.iloc[0]["cv"] or 0) if not _df_n.empty else 0,
-        "cf_n": float(_df_n.iloc[0]["cf"] or 0) if not _df_n.empty else 0,
-        "res_exp_n": float(_df_n.iloc[0]["res_exp"] or 0) if not _df_n.empty else 0,
-        "res_net_n": float(_df_n.iloc[0]["res_net"] or 0) if not _df_n.empty else 0,
-        "caf_n": float(_df_n.iloc[0]["caf"] or 0) if not _df_n.empty else 0,
-        "ca_p": float(_df_p.iloc[0]["ca"] or 0) if not _df_p.empty else 0,
-        "mcv_p": float(_df_p.iloc[0]["mcv"] or 0) if not _df_p.empty else 0,
-        "res_net_p": float(_df_p.iloc[0]["res_net"] or 0) if not _df_p.empty else 0,
-        "caf_p": float(_df_p.iloc[0]["caf"] or 0) if not _df_p.empty else 0,
+        "ca_n":       _pick(_df_n, "ca"),
+        "mcv_n":      _pick(_df_n, "mcv"),
+        "cv_n":       _cv_n,
+        "cf_n":       _cf_n,
+        "rf_n":       _pick(_df_n, "rf"),
+        "rex_n":      _pick(_df_n, "rex"),
+        "is_n":       _is_n,
+        "res_exp_n":  _pick(_df_n, "res_exp"),
+        "res_net_n":  _pick(_df_n, "res_net"),
+        "charges_tot_n": _cv_n + _cf_n + _is_n,
+        "ca_p":       _pick(_df_p, "ca"),
+        "mcv_p":      _pick(_df_p, "mcv"),
+        "res_net_p":  _pick(_df_p, "res_net"),
+        "charges_tot_p": _cv_p + _cf_p,
     }
     return (kpi_data,)
+
+
+@app.cell(hide_code=True)
+def _(annee, annee_prev, entite_id):
+    # Tresorerie nette a date (pour KPI Vue d'ensemble)
+    if entite_id:
+        _bf_n = bf_fetch(annee, entite_id)
+        _bf_p = bf_fetch(annee_prev, entite_id)
+    else:
+        # Groupe : somme TN sur toutes les entites
+        _df = db_query(
+            "SELECT SUM(CASE WHEN bf_categorie='tresorerie_active' THEN montant ELSE 0 END) "
+            "     - SUM(CASE WHEN bf_categorie='tresorerie_passive' THEN montant ELSE 0 END) AS tn "
+            "FROM v_bilan_fonctionnel WHERE annee = %s",
+            (annee,),
+        )
+        _df_p = db_query(
+            "SELECT SUM(CASE WHEN bf_categorie='tresorerie_active' THEN montant ELSE 0 END) "
+            "     - SUM(CASE WHEN bf_categorie='tresorerie_passive' THEN montant ELSE 0 END) AS tn "
+            "FROM v_bilan_fonctionnel WHERE annee = %s",
+            (annee_prev,),
+        )
+        _bf_n = {"tresorerie_active": float(_df.iloc[0]["tn"] or 0), "tresorerie_passive": 0.0}
+        _bf_p = {"tresorerie_active": float(_df_p.iloc[0]["tn"] or 0), "tresorerie_passive": 0.0}
+
+    tn_overview = {
+        "n": _bf_n["tresorerie_active"] - _bf_n["tresorerie_passive"],
+        "p": _bf_p["tresorerie_active"] - _bf_p["tresorerie_passive"],
+    }
+    return (tn_overview,)
 
 
 @app.cell(hide_code=True)
@@ -284,10 +329,10 @@ def _(annee, entite_id):
 
 
 @app.cell(hide_code=True)
-def _(date_ref_str, kpi_data):
-    def _stat_ytd(label, cur, prev, higher=True):
+def _(date_ref_str, kpi_data, tn_overview):
+    def _stat_ytd(label, cur, prev, higher=True, caption_prefix="YTD"):
         d = delta_pct(cur, prev)
-        caption = f"YTD au {date_ref_str}" if date_ref_str else None
+        caption = f"{caption_prefix} au {date_ref_str}" if date_ref_str else None
         if d is not None:
             caption = f"{caption} · {d:+.1%} vs N-1" if caption else f"{d:+.1%} vs N-1"
             is_good = (d >= 0) if higher else (d <= 0)
@@ -305,85 +350,112 @@ def _(date_ref_str, kpi_data):
     else:
         kpi_row = mo.hstack(
             [
-                _stat_ytd("Chiffre d'affaires", kpi_data["ca_n"], kpi_data["ca_p"]),
-                _stat_ytd("Marge sur cout variable", kpi_data["mcv_n"], kpi_data["mcv_p"]),
-                _stat_ytd("Resultat net", kpi_data["res_net_n"], kpi_data["res_net_p"]),
-                _stat_ytd("CAF", kpi_data["caf_n"], kpi_data["caf_p"]),
+                _stat_ytd("Chiffre d'affaires",     kpi_data["ca_n"],          kpi_data["ca_p"]),
+                _stat_ytd("Marge sur cout variable", kpi_data["mcv_n"],         kpi_data["mcv_p"]),
+                _stat_ytd("Charges totales",        kpi_data["charges_tot_n"], kpi_data["charges_tot_p"], higher=False),
+                _stat_ytd("Resultat net",           kpi_data["res_net_n"],     kpi_data["res_net_p"]),
+                _stat_ytd("Tresorerie nette",       tn_overview["n"],          tn_overview["p"],
+                          caption_prefix="à date"),
             ],
             widths="equal",
-            gap=1,
+            gap=2,
         )
     return (kpi_row,)
 
 
-# ── PAGE 1 : Waterfall CRD (Altair) ─────────────────────────────
+# ── PAGE 1 : Donut charges + structure CA/charges/resultat ──────
 
 @app.cell(hide_code=True)
 def _(kpi_data):
-    _steps = [
-        {"label": "CA", "delta": kpi_data["ca_n"], "type": "total"},
-        {"label": "- Ch. var.", "delta": -kpi_data["cv_n"], "type": "neg"},
-        {"label": "MCV", "delta": 0, "type": "total"},
-        {"label": "- Ch. fixes", "delta": -kpi_data["cf_n"], "type": "neg"},
-        {"label": "Res. exploit.", "delta": 0, "type": "total"},
+    # Donut : repartition des charges
+    _items = [
+        ("Charges variables",         kpi_data["cv_n"],   "#ef4444"),
+        ("Charges fixes",             kpi_data["cf_n"],   "#f97316"),
+        ("Impot sur les societes",    kpi_data["is_n"],   "#a855f7"),
     ]
+    # Charges financieres si RF < 0 (resultat financier negatif = charges nettes)
+    if kpi_data["rf_n"] < 0:
+        _items.append(("Charges financieres", abs(kpi_data["rf_n"]), "#06b6d4"))
+    # Charges exceptionnelles si REX < 0
+    if kpi_data["rex_n"] < 0:
+        _items.append(("Charges exceptionnelles", abs(kpi_data["rex_n"]), "#64748b"))
 
-    _cum = 0
-    _rows = []
-    for i, s in enumerate(_steps):
-        if s["type"] == "total":
-            if s["label"] == "CA":
-                _cum = kpi_data["ca_n"]
-                _rows.append({"step": i, "label": s["label"], "start": 0, "end": _cum, "type": "total"})
-            elif s["label"] == "MCV":
-                _cum = kpi_data["mcv_n"]
-                _rows.append({"step": i, "label": s["label"], "start": 0, "end": _cum, "type": "total"})
-            elif s["label"] == "Res. exploit.":
-                _cum = kpi_data["res_exp_n"]
-                _rows.append({"step": i, "label": s["label"], "start": 0, "end": _cum, "type": "total"})
-        else:
-            _new = _cum + s["delta"]
-            _rows.append({
-                "step": i, "label": s["label"],
-                "start": min(_cum, _new), "end": max(_cum, _new),
-                "type": "neg",
-            })
-            _cum = _new
+    _items = [(lib, val, col) for (lib, val, col) in _items if val > 0]
 
-    _df_wf = pd.DataFrame(_rows)
-
-    if _df_wf.empty or kpi_data["ca_n"] == 0:
-        waterfall = mo.md("_Pas de donnees pour le waterfall._")
+    if not _items:
+        charges_donut = mo.md("_Pas de charges a afficher._")
     else:
+        _df = pd.DataFrame([
+            {"categorie": lib, "montant": float(val), "couleur": col}
+            for lib, val, col in _items
+        ])
+        _total = _df["montant"].sum()
+        _df["pct"] = _df["montant"] / _total
+
         _chart = (
-            alt.Chart(_df_wf)
-            .mark_bar(size=50)
+            alt.Chart(_df)
+            .mark_arc(innerRadius=70, outerRadius=120, stroke="#fff", strokeWidth=2)
             .encode(
-                x=alt.X("label:N", sort=None, title="", axis=alt.Axis(labelAngle=0)),
-                y=alt.Y("start:Q", title="Montant (€)", axis=alt.Axis(format=",.0f")),
-                y2="end:Q",
+                theta=alt.Theta("montant:Q", stack=True),
+                color=alt.Color(
+                    "categorie:N",
+                    scale=alt.Scale(
+                        domain=_df["categorie"].tolist(),
+                        range=_df["couleur"].tolist(),
+                    ),
+                    legend=alt.Legend(title="", orient="right"),
+                ),
+                tooltip=[
+                    alt.Tooltip("categorie:N", title="Categorie"),
+                    alt.Tooltip("montant:Q", title="Montant", format=",.0f"),
+                    alt.Tooltip("pct:Q", title="%", format=".1%"),
+                ],
+            )
+            .properties(title="Repartition des charges", height=320, width=320)
+        )
+        charges_donut = _chart
+    return (charges_donut,)
+
+
+@app.cell(hide_code=True)
+def _(kpi_data):
+    # Structure du resultat : CA | Charges totales | Resultat net (horizontal bars)
+    _ca = kpi_data["ca_n"]
+    _charges = kpi_data["charges_tot_n"]
+    _res = kpi_data["res_net_n"]
+
+    if _ca == 0:
+        structure_chart = mo.md("_Pas de donnees._")
+    else:
+        _df = pd.DataFrame([
+            {"poste": "Chiffre d'affaires", "montant": float(_ca),      "type": "produit", "ordre": 1},
+            {"poste": "Charges totales",    "montant": float(_charges), "type": "charge",  "ordre": 2},
+            {"poste": "Resultat net",       "montant": float(_res),     "type": "resultat","ordre": 3},
+        ])
+        _chart = (
+            alt.Chart(_df)
+            .mark_bar(cornerRadiusEnd=4, size=45)
+            .encode(
+                y=alt.Y("poste:N", sort=alt.SortField("ordre"), title="",
+                        axis=alt.Axis(labelFontSize=13)),
+                x=alt.X("montant:Q", title="Montant (€)", axis=alt.Axis(format=",.0f")),
                 color=alt.Color(
                     "type:N",
                     scale=alt.Scale(
-                        domain=["total", "neg"],
-                        range=["#3182ce", "#e53e3e"],
+                        domain=["produit", "charge", "resultat"],
+                        range=["#22c55e", "#ef4444", "#3b82f6"],
                     ),
                     legend=None,
                 ),
                 tooltip=[
-                    alt.Tooltip("label:N", title="Etape"),
-                    alt.Tooltip("start:Q", title="Debut", format=",.0f"),
-                    alt.Tooltip("end:Q", title="Fin", format=",.0f"),
+                    alt.Tooltip("poste:N",    title="Poste"),
+                    alt.Tooltip("montant:Q",  title="Montant", format=",.0f"),
                 ],
             )
-            .properties(
-                title="Formation du resultat d'exploitation",
-                height=320,
-                width="container",
-            )
+            .properties(title="Structure du compte de resultat", height=320, width="container")
         )
-        waterfall = _chart
-    return (waterfall,)
+        structure_chart = _chart
+    return (structure_chart,)
 
 
 # ── PAGE 1 : Evolution mensuelle (Altair) ───────────────────────
@@ -451,17 +523,22 @@ def _(annee, entite_id):
 # ── PAGE 1 : Assemblage ─────────────────────────────────────────
 
 @app.cell(hide_code=True)
-def _(evolution_chart, kpi_row, waterfall):
+def _(charges_donut, evolution_chart, kpi_row, structure_chart):
     overview_tab = mo.vstack(
         [
             mo.md("### Indicateurs cles"),
             kpi_row,
-            mo.md("### Formation du resultat"),
-            waterfall,
+            mo.md("### Structure et repartition"),
+            mo.hstack(
+                [charges_donut, structure_chart],
+                widths=[1, 2],
+                gap=2,
+                align="center",
+            ),
             mo.md("### Evolution mensuelle"),
             evolution_chart,
         ],
-        gap=1,
+        gap=2,
     )
     return (overview_tab,)
 
