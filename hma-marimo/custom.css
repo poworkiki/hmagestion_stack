@@ -369,11 +369,14 @@ aside > div:last-child {
     background: var(--hma-card);
     border: 1px solid var(--hma-border);
     border-radius: var(--hma-radius-lg);
-    padding: 1rem 1rem 0.5rem 1rem;
+    padding: 1rem 1rem 0.75rem 1rem;
     box-shadow: var(--hma-shadow-xs);
     margin: 0.35rem 0 !important;
     transition: box-shadow 0.2s ease;
     width: 100%;
+    height: 380px;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 /* Les charts Altair fixent leur propre height -> on laisse respirer, pas de flex centering */
