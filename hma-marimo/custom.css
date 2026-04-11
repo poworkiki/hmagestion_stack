@@ -93,11 +93,16 @@ h3 {
 
 /* ══ TOP BAR (tablist) ════════════════════════════════════════════ */
 
+/* Cacher le bouton Download HTML/PNG marimo en haut a droite */
+div.fixed.right-0.top-0.z-50 {
+    display: none !important;
+}
+
 [role="tablist"] {
     position: fixed !important;
     top: 12px !important;
     left: calc(var(--hma-sidebar-width) + 1rem) !important;
-    right: 220px !important;
+    right: 1rem !important;
     z-index: 100 !important;
     background: #ffffff !important;
     backdrop-filter: blur(8px) saturate(180%);
