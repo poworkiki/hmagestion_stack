@@ -1284,6 +1284,333 @@ def _(
     return (budget_tab,)
 
 
+# ── PAGE 5 : BUDGET TRESORERIE (DSO/DPO/DIO + mode montant) ─────
+
+@app.function
+def budget_load_treso_params(scenario_id_val):
+    if not scenario_id_val:
+        return ("taux_jours", 60, 45, 0, None, None)
+    _df = db_query(
+        """SELECT mode_projection, dso_jours, dpo_jours, dio_jours,
+                  tn_cible_annuelle, bfr_cible_annuel
+           FROM budget_tresorerie_parametres
+           WHERE scenario_id = %s::uuid""",
+        (scenario_id_val,),
+    )
+    if _df.empty:
+        # Creation avec defauts
+        db_query(
+            "INSERT INTO budget_tresorerie_parametres (scenario_id) VALUES (%s::uuid) ON CONFLICT DO NOTHING",
+            (scenario_id_val,),
+        )
+        return ("taux_jours", 60, 45, 0, None, None)
+    _r = _df.iloc[0]
+    return (
+        _r["mode_projection"],
+        int(_r["dso_jours"] or 60),
+        int(_r["dpo_jours"] or 45),
+        int(_r["dio_jours"] or 0),
+        float(_r["tn_cible_annuelle"]) if _r["tn_cible_annuelle"] is not None else None,
+        float(_r["bfr_cible_annuel"]) if _r["bfr_cible_annuel"] is not None else None,
+    )
+
+
+@app.cell(hide_code=True)
+def _(budget_scenario_id, is_groupe):
+    if is_groupe or not budget_scenario_id:
+        treso_params_init = ("taux_jours", 60, 45, 0, None, None)
+    else:
+        treso_params_init = budget_load_treso_params(budget_scenario_id)
+    return (treso_params_init,)
+
+
+@app.cell(hide_code=True)
+def _(treso_params_init):
+    treso_slider_dso = mo.ui.slider(
+        start=0, stop=180, step=1,
+        value=treso_params_init[1],
+        label="DSO — Délai paiement clients (jours)",
+        show_value=True,
+        full_width=True,
+    )
+    treso_slider_dpo = mo.ui.slider(
+        start=0, stop=180, step=1,
+        value=treso_params_init[2],
+        label="DPO — Délai paiement fournisseurs (jours)",
+        show_value=True,
+        full_width=True,
+    )
+    treso_slider_dio = mo.ui.slider(
+        start=0, stop=180, step=1,
+        value=treso_params_init[3],
+        label="DIO — Rotation stocks (jours)",
+        show_value=True,
+        full_width=True,
+    )
+    treso_input_bfr_cible = mo.ui.number(
+        start=-10_000_000, stop=10_000_000, step=1000,
+        value=treso_params_init[5] if treso_params_init[5] is not None else 0.0,
+        label="BFR cible (€) — mode montant direct",
+        full_width=True,
+    )
+    treso_input_tn_cible = mo.ui.number(
+        start=-10_000_000, stop=10_000_000, step=1000,
+        value=treso_params_init[4] if treso_params_init[4] is not None else 0.0,
+        label="Trésorerie nette cible (€) — mode montant direct",
+        full_width=True,
+    )
+    treso_mode_toggle = mo.ui.radio(
+        options=["Délais (DSO/DPO/DIO)", "Montants directs"],
+        value="Délais (DSO/DPO/DIO)" if treso_params_init[0] == "taux_jours" else "Montants directs",
+        label="Mode de projection",
+    )
+    return (
+        treso_input_bfr_cible, treso_input_tn_cible,
+        treso_mode_toggle,
+        treso_slider_dio, treso_slider_dpo, treso_slider_dso,
+    )
+
+
+@app.cell(hide_code=True)
+def _(annee_prev, entite_id, is_groupe):
+    # Reference N-1 : BFR et TN actuels
+    if is_groupe or not entite_id:
+        treso_ref = {"bfr_reel": 0, "tn_reel": 0, "frng_reel": 0}
+    else:
+        _bf = bf_fetch(annee_prev, entite_id)
+        treso_ref = {
+            "bfr_reel": _bf["bfr_exploit"] + _bf["bfr_hors_exploit"],
+            "tn_reel": _bf["tresorerie_active"] - _bf["tresorerie_passive"],
+            "frng_reel": _bf["ressources_stables"] - _bf["emplois_stables"],
+        }
+    return (treso_ref,)
+
+
+@app.cell(hide_code=True)
+def _(
+    budget_calc, treso_input_bfr_cible, treso_input_tn_cible,
+    treso_mode_toggle, treso_ref,
+    treso_slider_dio, treso_slider_dpo, treso_slider_dso,
+):
+    # CA et achats projetes (proxy : charges variables)
+    ca_ht = budget_calc["ca"][1]
+    achats_ht = budget_calc["cv"][1]
+
+    # Calcul via delais
+    _tva = 1.20
+    creances_calc = (ca_ht * _tva / 365.0) * treso_slider_dso.value
+    dettes_calc   = (achats_ht * _tva / 365.0) * treso_slider_dpo.value
+    stocks_calc   = (achats_ht / 365.0) * treso_slider_dio.value
+    bfr_calcule   = creances_calc + stocks_calc - dettes_calc
+
+    # Resultat budget vient du budget_calc
+    resultat_budget = budget_calc["rn"][1]
+
+    mode = treso_mode_toggle.value
+    if mode == "Montants directs":
+        bfr_budget = float(treso_input_bfr_cible.value)
+        tn_budget = float(treso_input_tn_cible.value)
+    else:
+        bfr_budget = bfr_calcule
+        # TN = FRNG_reel + Resultat_budget - BFR_budget
+        tn_budget = treso_ref["frng_reel"] + resultat_budget - bfr_budget
+
+    variation_tn = tn_budget - treso_ref["tn_reel"]
+
+    treso_calc = {
+        "ca_ht": ca_ht, "achats_ht": achats_ht,
+        "creances": creances_calc, "dettes": dettes_calc, "stocks": stocks_calc,
+        "bfr_calcule": bfr_calcule, "bfr_budget": bfr_budget,
+        "resultat_budget": resultat_budget,
+        "tn_budget": tn_budget,
+        "variation_tn": variation_tn,
+    }
+    return (treso_calc,)
+
+
+@app.cell(hide_code=True)
+def _(treso_calc, treso_ref):
+    def _kstat(label, cur, prev, caption):
+        d = delta_pct(cur, prev)
+        if d is None:
+            return mo.stat(label=label, value=fmt(cur), caption=caption, bordered=True)
+        return mo.stat(
+            label=label, value=fmt(cur),
+            caption=f"{caption} · {d:+.1%}",
+            direction="increase" if d >= 0 else "decrease",
+            bordered=True,
+        )
+
+    treso_kpi = mo.hstack(
+        [
+            mo.stat(label="FRNG réel N-1", value=fmt(treso_ref["frng_reel"]),
+                    caption="Base pour projection", bordered=True),
+            _kstat("BFR budget", treso_calc["bfr_budget"], treso_ref["bfr_reel"], "vs BFR réel N-1"),
+            _kstat("Trésorerie nette budget", treso_calc["tn_budget"], treso_ref["tn_reel"], "vs TN réelle N-1"),
+        ],
+        widths="equal",
+        gap=1,
+    )
+    return (treso_kpi,)
+
+
+@app.cell(hide_code=True)
+def _(treso_calc, treso_ref):
+    # Chart comparatif Reel N-1 vs Budget N
+    _rows = [
+        {"poste": "BFR", "type": "Réel N-1", "montant": float(treso_ref["bfr_reel"])},
+        {"poste": "BFR", "type": "Budget N", "montant": float(treso_calc["bfr_budget"])},
+        {"poste": "Trésorerie nette", "type": "Réel N-1", "montant": float(treso_ref["tn_reel"])},
+        {"poste": "Trésorerie nette", "type": "Budget N", "montant": float(treso_calc["tn_budget"])},
+    ]
+    _df = pd.DataFrame(_rows)
+
+    _chart = (
+        alt.Chart(_df)
+        .mark_bar()
+        .encode(
+            x=alt.X("poste:N", sort=["BFR", "Trésorerie nette"], title="",
+                    axis=alt.Axis(labelAngle=0)),
+            xOffset="type:N",
+            y=alt.Y("montant:Q", title="Montant (€)", axis=alt.Axis(format=",.0f")),
+            color=alt.Color(
+                "type:N",
+                scale=alt.Scale(domain=["Réel N-1", "Budget N"],
+                                range=["#94a3b8", "#1e40af"]),
+                legend=alt.Legend(title="", orient="top"),
+            ),
+            tooltip=[
+                alt.Tooltip("poste:N", title="Poste"),
+                alt.Tooltip("type:N", title="Type"),
+                alt.Tooltip("montant:Q", title="Montant", format=",.0f"),
+            ],
+        )
+        .properties(title="BFR et Trésorerie — Réel N-1 vs Budget N", height=320, width="container")
+    )
+    treso_chart = _chart
+    return (treso_chart,)
+
+
+@app.cell(hide_code=True)
+def _(treso_calc):
+    # Tableau detaille des composants du BFR
+    _rows = [
+        ("Créances clients (CA × DSO / 365 × 1.20)", treso_calc["creances"]),
+        ("+ Stocks (Achats × DIO / 365)",            treso_calc["stocks"]),
+        ("− Dettes fournisseurs (Achats × DPO / 365 × 1.20)", -treso_calc["dettes"]),
+        ("= BFR calculé via délais",                  treso_calc["bfr_calcule"]),
+    ]
+    _df = pd.DataFrame([{"Composant": lib, "Montant": val} for lib, val in _rows])
+
+    def _fmt_v(v):
+        if v is None or pd.isna(v):
+            return ""
+        return fmt(v)
+
+    def _style(row):
+        if row.name == 3:  # Total
+            return ["background-color: #dbeafe; color: #1e3a8a; font-weight: 600"] * 2
+        return [""] * 2
+
+    _styler = (
+        _df.style
+        .format({"Montant": _fmt_v})
+        .apply(_style, axis=1)
+        .hide(axis="index")
+    )
+    treso_details_html = mo.Html(_styler.to_html())
+    return (treso_details_html,)
+
+
+@app.cell(hide_code=True)
+def _(budget_scenario_id):
+    treso_save_btn = mo.ui.run_button(
+        label="💾 Sauvegarder ces paramètres trésorerie",
+        kind="success",
+        full_width=False,
+    )
+    return (treso_save_btn,)
+
+
+@app.cell(hide_code=True)
+def _(
+    budget_scenario_id, treso_input_bfr_cible, treso_input_tn_cible,
+    treso_mode_toggle, treso_save_btn,
+    treso_slider_dio, treso_slider_dpo, treso_slider_dso,
+):
+    if treso_save_btn.value and budget_scenario_id:
+        _mode_db = "taux_jours" if treso_mode_toggle.value == "Délais (DSO/DPO/DIO)" else "montant_direct"
+        _bfr_cible = treso_input_bfr_cible.value if _mode_db == "montant_direct" else None
+        _tn_cible  = treso_input_tn_cible.value  if _mode_db == "montant_direct" else None
+        db_query(
+            """UPDATE budget_tresorerie_parametres
+               SET mode_projection = %s,
+                   dso_jours = %s, dpo_jours = %s, dio_jours = %s,
+                   bfr_cible_annuel = %s, tn_cible_annuelle = %s
+               WHERE scenario_id = %s::uuid""",
+            (_mode_db,
+             treso_slider_dso.value, treso_slider_dpo.value, treso_slider_dio.value,
+             _bfr_cible, _tn_cible, budget_scenario_id),
+        )
+        treso_save_msg = mo.callout(
+            f"✓ Parametres sauvegardes (mode : {_mode_db})",
+            kind="success",
+        )
+    else:
+        treso_save_msg = mo.md("")
+    return (treso_save_msg,)
+
+
+@app.cell(hide_code=True)
+def _(
+    budget_scenario_id, entite_nom, is_groupe,
+    treso_calc, treso_chart, treso_details_html,
+    treso_input_bfr_cible, treso_input_tn_cible, treso_kpi,
+    treso_mode_toggle, treso_save_btn, treso_save_msg,
+    treso_slider_dio, treso_slider_dpo, treso_slider_dso,
+):
+    if is_groupe:
+        treso_tab = mo.callout(
+            "Le budget tresorerie se calcule par **structure**. "
+            "Selectionnez STIVMAT, STA, HMA ou ETPA dans la sidebar.",
+            kind="warn",
+        )
+    elif not budget_scenario_id:
+        treso_tab = mo.callout("Scenario budget introuvable.", kind="danger")
+    elif treso_calc["ca_ht"] == 0:
+        treso_tab = mo.callout(
+            f"Aucun CA budget pour {entite_nom}. Le calcul tresorerie depend du budget CRD.",
+            kind="info",
+        )
+    else:
+        treso_tab = mo.vstack(
+            [
+                mo.md(f"### Budget Trésorerie — {entite_nom}"),
+                mo.md(
+                    "**DSO** = Days Sales Outstanding (delai encaissement clients) · "
+                    "**DPO** = Days Payable Outstanding (delai paiement fournisseurs) · "
+                    "**DIO** = Days Inventory Outstanding (rotation stocks)"
+                ),
+                treso_mode_toggle,
+                mo.hstack(
+                    [treso_slider_dso, treso_slider_dpo, treso_slider_dio],
+                    widths="equal", gap=1,
+                ),
+                mo.hstack(
+                    [treso_input_bfr_cible, treso_input_tn_cible],
+                    widths="equal", gap=1,
+                ),
+                treso_kpi,
+                mo.md("### Décomposition du BFR calculé"),
+                treso_details_html,
+                treso_chart,
+                mo.hstack([treso_save_btn, treso_save_msg], justify="start", gap=1),
+            ],
+            gap=1,
+        )
+    return (treso_tab,)
+
+
 # ── PAGE 6 : SQL LIBRE (creation textarea) ──────────────────────
 
 @app.cell(hide_code=True)
@@ -1338,13 +1665,14 @@ def _(sql_input):
 # ── TABS (assemblage final) ─────────────────────────────────────
 
 @app.cell(hide_code=True)
-def _(bf_tab, budget_tab, crd_tab, overview_tab, sql_tab):
+def _(bf_tab, budget_tab, crd_tab, overview_tab, sql_tab, treso_tab):
     mo.ui.tabs(
         {
             "Vue d'ensemble": overview_tab,
             "CRD Réel": crd_tab,
             "Bilan Fonctionnel": bf_tab,
             "Budget CRD": budget_tab,
+            "Budget Trésorerie": treso_tab,
             "SQL libre": sql_tab,
         },
     )
