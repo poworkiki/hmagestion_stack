@@ -37,11 +37,14 @@ with app.setup:
 
 @app.function
 def db_query(sql, params=None):
-    """Execute une requete SQL et retourne un DataFrame pandas."""
+    """Execute une requete SQL. Retourne un DataFrame pour SELECT, DF vide sinon."""
     _DB_URL = os.environ.get("HMA_DB_URL", "")
     with psycopg2.connect(_DB_URL) as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, params)
+            # INSERT/UPDATE/DELETE sans RETURNING : cur.description est None
+            if cur.description is None:
+                return pd.DataFrame()
             rows = cur.fetchall()
             return pd.DataFrame(rows) if rows else pd.DataFrame()
 
@@ -126,27 +129,26 @@ def _(annee_list, entite_map):
         label="Structure",
         full_width=True,
     )
-    filtre_annee = mo.ui.dropdown(
+    _current_year = str(annee_list[0]) if annee_list else "2026"
+    filtre_annee = mo.ui.multiselect(
         options=[str(a) for a in annee_list],
-        value=str(annee_list[0]) if annee_list else "2026",
-        label="Exercice",
+        value=[_current_year],
+        label="Exercices (multi)",
         full_width=True,
     )
-    filtre_trimestre = mo.ui.dropdown(
-        options=["Annee", "T1", "T2", "T3", "T4"],
-        value="Annee",
-        label="Periode",
-        full_width=True,
-    )
-    filtre_mois = mo.ui.dropdown(
+    filtre_mois = mo.ui.multiselect(
         options=[
-            "Tous",
             "Jan", "Fev", "Mar", "Avr", "Mai", "Jun",
             "Jul", "Aou", "Sep", "Oct", "Nov", "Dec",
         ],
-        value="Tous",
-        label="Mois",
+        value=[],
+        label="Mois (vide = tous)",
         full_width=True,
+    )
+    filtre_refresh = mo.ui.refresh(
+        options=["manual", "30s", "1m", "5m", "15m"],
+        default_interval="manual",
+        label="Live",
     )
 
     _now = datetime.now(TZ_GUYANE)
@@ -161,8 +163,9 @@ def _(annee_list, entite_map):
             mo.md("### Filtres"),
             filtre_structure,
             filtre_annee,
-            filtre_trimestre,
             filtre_mois,
+            mo.md("---"),
+            filtre_refresh,
             mo.md("---"),
             mo.md(
                 f"<div style='font-size:0.8rem; color:#6c757d; line-height:1.4;'>"
@@ -183,103 +186,103 @@ def _(annee_list, entite_map):
         ],
         footer=mo.md("**HMA** · Gestion Guyane"),
     )
-    return (filtre_annee, filtre_mois, filtre_structure, filtre_trimestre)
+    return (filtre_annee, filtre_mois, filtre_refresh, filtre_structure)
 
 
 # ── FILTRES (lecture des valeurs — cellule separee) ─────────────
 
 @app.cell(hide_code=True)
-def _(entite_map, filtre_annee, filtre_mois, filtre_structure, filtre_trimestre):
+def _(annee_list, entite_map, filtre_annee, filtre_mois, filtre_refresh, filtre_structure):
     _val = filtre_structure.value or GROUPE_LABEL
     is_groupe = (_val == GROUPE_LABEL)
     entite_id = None if is_groupe else entite_map.get(_val, "")
     entite_nom = "Groupe" if is_groupe else _val
-    annee = int(filtre_annee.value)
-    annee_prev = annee - 1
-    trimestre = filtre_trimestre.value
-    trim_num = None if trimestre == "Annee" else int(trimestre[1:])
 
+    # Exercices (multi) : liste d'ints. Fallback a l'annee la plus recente si vide.
+    _annees_raw = filtre_annee.value or []
+    annees_sel = sorted([int(a) for a in _annees_raw], reverse=True)
+    if not annees_sel:
+        annees_sel = [annee_list[0]] if annee_list else [2026]
+    annee = annees_sel[0]                 # annee principale (max) pour pages mono-annee
+    annee_prev = annee - 1                 # pour delta vs N-1
+
+    # Mois (multi) : liste d'ints 1-12. Vide = tous les mois.
     _mois_map = {
-        "Tous": None, "Jan": 1, "Fev": 2, "Mar": 3, "Avr": 4, "Mai": 5, "Jun": 6,
+        "Jan": 1, "Fev": 2, "Mar": 3, "Avr": 4, "Mai": 5, "Jun": 6,
         "Jul": 7, "Aou": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
     }
-    mois_num = _mois_map.get(filtre_mois.value)
-    return (annee, annee_prev, entite_id, entite_nom, is_groupe, mois_num, trim_num, trimestre)
+    mois_sel = [_mois_map[m] for m in (filtre_mois.value or []) if m in _mois_map]
+
+    # Tick pour forcer la re-execution des cellules de donnees (bouton Live)
+    refresh_tick = filtre_refresh.value
+
+    return (annee, annee_prev, annees_sel, entite_id, entite_nom, is_groupe, mois_sel, refresh_tick)
 
 
 # ── PAGE 1 : VUE D'ENSEMBLE (KPI + trends) ──────────────────────
 
-@app.cell(hide_code=True)
-def _(annee, annee_prev, entite_id, trim_num):
-    _clauses = ["annee = %s"]
-    _base_n = [annee]
-    _base_p = [annee_prev]
-    if entite_id:
+@app.function
+def fetch_kpi_by_cat(annees_val, entite_id_val, mois_val):
+    """Agrege v_crd_drilldown par crd_categorie.
+    annees_val : list d'entiers (1+ annees). mois_val : list d'entiers 1-12 (peut etre vide).
+    """
+    if isinstance(annees_val, int):
+        annees_val = [annees_val]
+    _clauses = ["annee = ANY(%s)"]
+    _p = [list(annees_val)]
+    if entite_id_val:
         _clauses.insert(0, "entite_id = %s::uuid")
-        _base_n.insert(0, entite_id)
-        _base_p.insert(0, entite_id)
-    if trim_num:
-        _clauses.append("trimestre = %s")
-        _base_n.append(trim_num)
-        _base_p.append(trim_num)
-    _where = " AND ".join(_clauses)
+        _p.insert(0, entite_id_val)
+    if mois_val:
+        _clauses.append("mois = ANY(%s)")
+        _p.append(list(mois_val))
+    _df = db_query(f"""
+        SELECT crd_categorie, SUM(montant) AS montant
+        FROM v_crd_drilldown
+        WHERE {' AND '.join(_clauses)}
+        GROUP BY crd_categorie
+    """, tuple(_p))
+    _cats = {r["crd_categorie"]: float(r["montant"] or 0) for _, r in _df.iterrows()}
+    ca = _cats.get("Chiffre d'affaires", 0)
+    cv = _cats.get("Charges variables", 0)
+    cf = _cats.get("Charges fixes exploitation", 0)
+    rf = _cats.get("Resultat financier", 0)
+    rex = _cats.get("Resultat exceptionnel", 0)
+    is_ = _cats.get("Impot sur les societes", 0)
+    mcv = ca - cv
+    re_ = mcv - cf
+    rcai = re_ + rf
+    res_net = rcai + rex - is_
+    # Charges totales : somme de toutes les sorties nettes
+    charges_tot = cv + cf + is_ + max(0, -rf) + max(0, -rex)
+    return {
+        "ca": ca, "cv": cv, "cf": cf, "mcv": mcv,
+        "rf": rf, "rex": rex, "is_": is_,
+        "res_exp": re_, "rcai": rcai, "res_net": res_net,
+        "charges_tot": charges_tot,
+    }
 
-    _df_n = db_query(f"""
-        SELECT
-            SUM(ca) AS ca,
-            SUM(mcv) AS mcv,
-            SUM(charges_variables) AS cv,
-            SUM(charges_fixes) AS cf,
-            SUM(resultat_financier) AS rf,
-            SUM(resultat_exceptionnel) AS rex,
-            SUM(impot_sur_societes) AS is_,
-            SUM(resultat_exploitation) AS res_exp,
-            SUM(resultat_net) AS res_net
-        FROM v_crd
-        WHERE {_where}
-    """, tuple(_base_n))
 
-    _df_p = db_query(f"""
-        SELECT
-            SUM(ca) AS ca,
-            SUM(mcv) AS mcv,
-            SUM(charges_variables) AS cv,
-            SUM(charges_fixes) AS cf,
-            SUM(resultat_net) AS res_net
-        FROM v_crd
-        WHERE {_where}
-    """, tuple(_base_p))
-
-    def _pick(df, col):
-        return float(df.iloc[0][col] or 0) if not df.empty else 0.0
-
-    _cv_n = _pick(_df_n, "cv")
-    _cf_n = _pick(_df_n, "cf")
-    _is_n = _pick(_df_n, "is_")
-    _cv_p = _pick(_df_p, "cv")
-    _cf_p = _pick(_df_p, "cf")
+@app.cell(hide_code=True)
+def _(annee_prev, annees_sel, entite_id, mois_sel, refresh_tick):
+    _ = refresh_tick  # dependance pour forcer re-run sur bouton Live
+    _n = fetch_kpi_by_cat(annees_sel, entite_id, mois_sel)
+    _p = fetch_kpi_by_cat([annee_prev], entite_id, mois_sel)
 
     kpi_data = {
-        "ca_n":       _pick(_df_n, "ca"),
-        "mcv_n":      _pick(_df_n, "mcv"),
-        "cv_n":       _cv_n,
-        "cf_n":       _cf_n,
-        "rf_n":       _pick(_df_n, "rf"),
-        "rex_n":      _pick(_df_n, "rex"),
-        "is_n":       _is_n,
-        "res_exp_n":  _pick(_df_n, "res_exp"),
-        "res_net_n":  _pick(_df_n, "res_net"),
-        "charges_tot_n": _cv_n + _cf_n + _is_n,
-        "ca_p":       _pick(_df_p, "ca"),
-        "mcv_p":      _pick(_df_p, "mcv"),
-        "res_net_p":  _pick(_df_p, "res_net"),
-        "charges_tot_p": _cv_p + _cf_p,
+        "ca_n": _n["ca"], "mcv_n": _n["mcv"], "cv_n": _n["cv"], "cf_n": _n["cf"],
+        "rf_n": _n["rf"], "rex_n": _n["rex"], "is_n": _n["is_"],
+        "res_exp_n": _n["res_exp"], "res_net_n": _n["res_net"],
+        "charges_tot_n": _n["charges_tot"],
+        "ca_p": _p["ca"], "mcv_p": _p["mcv"],
+        "res_net_p": _p["res_net"], "charges_tot_p": _p["charges_tot"],
     }
     return (kpi_data,)
 
 
 @app.cell(hide_code=True)
-def _(annee, annee_prev, entite_id):
+def _(annee, annee_prev, entite_id, refresh_tick):
+    _ = refresh_tick
     # Tresorerie nette a date (pour KPI Vue d'ensemble)
     if entite_id:
         _bf_n = bf_fetch(annee, entite_id)
@@ -309,7 +312,8 @@ def _(annee, annee_prev, entite_id):
 
 
 @app.cell(hide_code=True)
-def _(annee, entite_id):
+def _(annee, entite_id, refresh_tick):
+    _ = refresh_tick
     _clauses = ["annee = %s", "NOT is_a_nouveau"]
     _params = [annee]
     if entite_id:
@@ -363,27 +367,40 @@ def _(date_ref_str, kpi_data, tn_overview):
     return (kpi_row,)
 
 
-# ── PAGE 1 : Donut charges + structure CA/charges/resultat ──────
+# ── PAGE 1 : Donut CRD (decomposition du CA) ────────────────────
 
 @app.cell(hide_code=True)
 def _(kpi_data):
-    # Donut : repartition des charges
+    # Donut : decomposition du CA en composantes CRD
+    # Somme des tranches = CA. Chaque tranche = % du CA
+    _ca = kpi_data["ca_n"]
     _items = [
-        ("Charges variables",         kpi_data["cv_n"],   "#ef4444"),
-        ("Charges fixes",             kpi_data["cf_n"],   "#f97316"),
-        ("Impot sur les societes",    kpi_data["is_n"],   "#a855f7"),
+        ("Charges variables",       kpi_data["cv_n"],           "#ef4444"),
+        ("Charges fixes",           kpi_data["cf_n"],           "#f97316"),
     ]
-    # Charges financieres si RF < 0 (resultat financier negatif = charges nettes)
     if kpi_data["rf_n"] < 0:
         _items.append(("Charges financieres", abs(kpi_data["rf_n"]), "#06b6d4"))
-    # Charges exceptionnelles si REX < 0
     if kpi_data["rex_n"] < 0:
         _items.append(("Charges exceptionnelles", abs(kpi_data["rex_n"]), "#64748b"))
+    if kpi_data["is_n"] > 0:
+        _items.append(("Impot sur les societes", kpi_data["is_n"], "#a855f7"))
+
+    # Resultat net = ce qui reste du CA
+    _res_net = kpi_data["res_net_n"]
+    if _res_net > 0:
+        _items.append(("Resultat net", _res_net, "#22c55e"))
+    elif _res_net < 0:
+        _items.append(("Perte nette", abs(_res_net), "#991b1b"))
+
+    # Produits financiers / exceptionnels positifs : tranche speciale "produits hors expl."
+    _produits_hors = max(0, kpi_data["rf_n"]) + max(0, kpi_data["rex_n"])
+    if _produits_hors > 0:
+        _items.append(("Produits hors exploitation", _produits_hors, "#8b5cf6"))
 
     _items = [(lib, val, col) for (lib, val, col) in _items if val > 0]
 
-    if not _items:
-        charges_donut = mo.md("_Pas de charges a afficher._")
+    if not _items or _ca == 0:
+        charges_donut = mo.md("_Pas de donnees CRD a afficher._")
     else:
         _df = pd.DataFrame([
             {"categorie": lib, "montant": float(val), "couleur": col}
@@ -394,7 +411,7 @@ def _(kpi_data):
 
         _chart = (
             alt.Chart(_df)
-            .mark_arc(innerRadius=70, outerRadius=120, stroke="#fff", strokeWidth=2)
+            .mark_arc(innerRadius=75, outerRadius=120, stroke="#fff", strokeWidth=2)
             .encode(
                 theta=alt.Theta("montant:Q", stack=True),
                 color=alt.Color(
@@ -406,12 +423,16 @@ def _(kpi_data):
                     legend=alt.Legend(title="", orient="right"),
                 ),
                 tooltip=[
-                    alt.Tooltip("categorie:N", title="Categorie"),
+                    alt.Tooltip("categorie:N", title="Composante"),
                     alt.Tooltip("montant:Q", title="Montant", format=",.0f"),
-                    alt.Tooltip("pct:Q", title="%", format=".1%"),
+                    alt.Tooltip("pct:Q", title="% du CA", format=".1%"),
                 ],
             )
-            .properties(title="Repartition des charges", height=320, width=320)
+            .properties(
+                title=f"Decomposition du CA ({fmt(_ca)})",
+                height=320,
+                width=320,
+            )
         )
         charges_donut = _chart
     return (charges_donut,)
@@ -461,7 +482,8 @@ def _(kpi_data):
 # ── PAGE 1 : Evolution mensuelle (Altair) ───────────────────────
 
 @app.cell(hide_code=True)
-def _(annee, entite_id):
+def _(annee, entite_id, refresh_tick):
+    _ = refresh_tick
     _clauses = ["annee = %s", "NOT is_a_nouveau", "classe IN (6, 7)"]
     _params = [annee]
     if entite_id:
@@ -546,39 +568,26 @@ def _(charges_donut, evolution_chart, kpi_row, structure_chart):
 # ── PAGE 2 : CRD REEL (tableau + waterfall + drilldown) ─────────
 
 @app.cell(hide_code=True)
-def _(annee, annee_prev, entite_id, trim_num):
-    def _build(where_annee, params):
-        _clauses = [f"annee = %s"]
-        _p = [params]
-        if entite_id:
-            _clauses.insert(0, "entite_id = %s::uuid")
-            _p.insert(0, entite_id)
-        if trim_num:
-            _clauses.append("trimestre = %s")
-            _p.append(trim_num)
-        sql = f"""
-            SELECT
-                COALESCE(SUM(ca), 0)                    AS ca,
-                COALESCE(SUM(charges_variables), 0)     AS cv,
-                COALESCE(SUM(mcv), 0)                   AS mcv,
-                COALESCE(SUM(charges_fixes), 0)         AS cf,
-                COALESCE(SUM(resultat_exploitation), 0) AS re,
-                COALESCE(SUM(resultat_financier), 0)    AS rf,
-                COALESCE(SUM(rcai), 0)                  AS rcai,
-                COALESCE(SUM(resultat_exceptionnel), 0) AS rex,
-                COALESCE(SUM(impot_sur_societes), 0)    AS is_,
-                COALESCE(SUM(resultat_net), 0)          AS rn,
-                COALESCE(SUM(caf), 0)                   AS caf
-            FROM v_crd
-            WHERE {' AND '.join(_clauses)}
-        """
-        _df = db_query(sql, tuple(_p))
-        if _df.empty:
-            return {k: 0.0 for k in ["ca","cv","mcv","cf","re","rf","rcai","rex","is_","rn","caf"]}
-        return {k: float(_df.iloc[0][k] or 0) for k in ["ca","cv","mcv","cf","re","rf","rcai","rex","is_","rn","caf"]}
+def _(annee_prev, annees_sel, entite_id, mois_sel, refresh_tick):
+    _ = refresh_tick
+    def _build(_annees):
+        _k = fetch_kpi_by_cat(_annees, entite_id, mois_sel)
+        return {
+            "ca":   _k["ca"],
+            "cv":   _k["cv"],
+            "mcv":  _k["mcv"],
+            "cf":   _k["cf"],
+            "re":   _k["res_exp"],
+            "rf":   _k["rf"],
+            "rcai": _k["rcai"],
+            "rex":  _k["rex"],
+            "is_":  _k["is_"],
+            "rn":   _k["res_net"],
+            "caf":  _k["res_net"],
+        }
 
-    crd_n = _build(annee, annee)
-    crd_p = _build(annee_prev, annee_prev)
+    crd_n = _build(annees_sel)
+    crd_p = _build([annee_prev])
     return (crd_n, crd_p)
 
 
@@ -729,18 +738,19 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(annee, crd_drill_cat, entite_id, trim_num):
+def _(annees_sel, crd_drill_cat, entite_id, mois_sel, refresh_tick):
+    _ = refresh_tick
     if crd_drill_cat.value == "(aucun)":
         crd_drill = mo.md("_Sélectionnez une catégorie ci-dessus pour voir les comptes PCG détaillés._")
     else:
-        _clauses = ["annee = %s", "crd_categorie = %s"]
-        _params = [annee, crd_drill_cat.value]
+        _clauses = ["annee = ANY(%s)", "crd_categorie = %s"]
+        _params = [list(annees_sel), crd_drill_cat.value]
         if entite_id:
             _clauses.insert(0, "entite_id = %s::uuid")
             _params.insert(0, entite_id)
-        if trim_num:
-            _clauses.append("trimestre = %s")
-            _params.append(trim_num)
+        if mois_sel:
+            _clauses.append("mois = ANY(%s)")
+            _params.append(list(mois_sel))
         _df = db_query(f"""
             SELECT compte_numero, compte_libelle, crd_rubrique,
                    SUM(montant) AS montant
@@ -804,7 +814,8 @@ def bf_fetch(annee_val, entite_id_val):
 
 
 @app.cell(hide_code=True)
-def _(annee, annee_prev, entite_id):
+def _(annee, annee_prev, entite_id, refresh_tick):
+    _ = refresh_tick
     bf_n = bf_fetch(annee, entite_id)
     bf_p = bf_fetch(annee_prev, entite_id)
     return (bf_n, bf_p)
@@ -987,7 +998,8 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(annee, bf_drill_cat, entite_id):
+def _(annee, bf_drill_cat, entite_id, refresh_tick):
+    _ = refresh_tick
     if bf_drill_cat.value == "(aucun)":
         bf_drill = mo.md("_Sélectionnez une catégorie ci-dessus pour voir les comptes PCG détaillés._")
     else:
@@ -1085,7 +1097,8 @@ def budget_load_regle_globale(scenario_id_val):
 
 
 @app.cell(hide_code=True)
-def _(annee, entite_id, is_groupe):
+def _(annee, entite_id, is_groupe, refresh_tick):
+    _ = refresh_tick
     if is_groupe:
         budget_scenario_id = None
         budget_taux_init = (10.0, 5.0)
@@ -1115,7 +1128,8 @@ def _(budget_taux_init):
 
 
 @app.cell(hide_code=True)
-def _(annee, annee_prev, entite_id, is_groupe):
+def _(annee, annee_prev, entite_id, is_groupe, refresh_tick):
+    _ = refresh_tick
     # Donnees reelles N-1 agregees par categorie CRD
     if is_groupe or not entite_id:
         budget_reel_cats = {}
@@ -1449,7 +1463,8 @@ def _(treso_params_init):
 
 
 @app.cell(hide_code=True)
-def _(annee_prev, entite_id, is_groupe):
+def _(annee_prev, entite_id, is_groupe, refresh_tick):
+    _ = refresh_tick
     # Reference N-1 : BFR et TN actuels
     if is_groupe or not entite_id:
         treso_ref = {"bfr_reel": 0, "tn_reel": 0, "frng_reel": 0}
