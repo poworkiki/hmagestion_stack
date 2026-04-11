@@ -96,7 +96,7 @@ h3 {
 [role="tablist"] {
     position: fixed !important;
     top: 12px !important;
-    left: calc(var(--left-column-width, 260px) + 1rem) !important;
+    left: calc(var(--hma-sidebar-width) + 1rem) !important;
     right: 220px !important;
     z-index: 100 !important;
     background: #ffffff !important;
@@ -141,7 +141,11 @@ button[role="tab"][aria-selected="true"] {
     box-shadow: 0 1px 2px rgba(37, 99, 235, 0.25);
 }
 
-/* ══ SIDEBAR ══════════════════════════════════════════════════════ */
+/* ══ SIDEBAR — largeur fixe 288px, pas d'auto-collapse ═══════════ */
+
+:root {
+    --hma-sidebar-width: 288px;
+}
 
 aside,
 aside.app-sidebar {
@@ -150,6 +154,13 @@ aside.app-sidebar {
     color: var(--hma-text) !important;
     box-shadow: var(--hma-shadow-xs);
     padding-top: 0.5rem;
+    /* Largeur fixe, desactivation auto-collapse marimo */
+    width: var(--hma-sidebar-width) !important;
+    min-width: var(--hma-sidebar-width) !important;
+    max-width: var(--hma-sidebar-width) !important;
+    flex: 0 0 var(--hma-sidebar-width) !important;
+    transition: none !important;
+    display: block !important;
 }
 
 aside h1 {
