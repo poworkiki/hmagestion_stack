@@ -98,6 +98,11 @@ div.fixed.right-0.top-0.z-50 {
     display: none !important;
 }
 
+/* Cacher le bouton collapse/expand de la sidebar marimo */
+aside.app-sidebar > div.absolute[class*="z-20"] {
+    display: none !important;
+}
+
 [role="tablist"] {
     position: fixed !important;
     top: 12px !important;
