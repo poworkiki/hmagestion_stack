@@ -382,7 +382,7 @@ def _(kpi_data):
                 width="container",
             )
         )
-        waterfall = mo.ui.altair_chart(_chart)
+        waterfall = _chart
     return (waterfall,)
 
 
@@ -444,7 +444,7 @@ def _(annee, entite_id):
                 width="container",
             )
         )
-        evolution_chart = mo.ui.altair_chart(_chart)
+        evolution_chart = _chart
     return (evolution_chart,)
 
 
@@ -466,248 +466,238 @@ def _(evolution_chart, kpi_row, waterfall):
     return (overview_tab,)
 
 
-# ── PAGE 2 : BALANCE GENERALE ───────────────────────────────────
+# ── PAGE 2 : CRD REEL (tableau + waterfall + drilldown) ─────────
 
 @app.cell(hide_code=True)
-def _(annee, entite_id, mois_num):
-    _clauses = ["annee = %s"]
-    _params = [annee]
-    if entite_id:
-        _clauses.insert(0, "entite_id = %s::uuid")
-        _params.insert(0, entite_id)
-    if mois_num:
-        _clauses.append("mois = %s")
-        _params.append(mois_num)
-    _df_bg = db_query(f"""
-        SELECT compte_numero, compte_libelle, classe, mois,
-            solde, crd_categorie, bf_categorie
-        FROM balance_generale
-        WHERE {' AND '.join(_clauses)}
-        ORDER BY compte_numero, mois
-    """, tuple(_params))
+def _(annee, annee_prev, entite_id, trim_num):
+    def _build(where_annee, params):
+        _clauses = [f"annee = %s"]
+        _p = [params]
+        if entite_id:
+            _clauses.insert(0, "entite_id = %s::uuid")
+            _p.insert(0, entite_id)
+        if trim_num:
+            _clauses.append("trimestre = %s")
+            _p.append(trim_num)
+        sql = f"""
+            SELECT
+                COALESCE(SUM(ca), 0)                    AS ca,
+                COALESCE(SUM(charges_variables), 0)     AS cv,
+                COALESCE(SUM(mcv), 0)                   AS mcv,
+                COALESCE(SUM(charges_fixes), 0)         AS cf,
+                COALESCE(SUM(resultat_exploitation), 0) AS re,
+                COALESCE(SUM(resultat_financier), 0)    AS rf,
+                COALESCE(SUM(rcai), 0)                  AS rcai,
+                COALESCE(SUM(resultat_exceptionnel), 0) AS rex,
+                COALESCE(SUM(impot_sur_societes), 0)    AS is_,
+                COALESCE(SUM(resultat_net), 0)          AS rn,
+                COALESCE(SUM(caf), 0)                   AS caf
+            FROM v_crd
+            WHERE {' AND '.join(_clauses)}
+        """
+        _df = db_query(sql, tuple(_p))
+        if _df.empty:
+            return {k: 0.0 for k in ["ca","cv","mcv","cf","re","rf","rcai","rex","is_","rn","caf"]}
+        return {k: float(_df.iloc[0][k] or 0) for k in ["ca","cv","mcv","cf","re","rf","rcai","rex","is_","rn","caf"]}
 
-    if _df_bg.empty:
-        bg_tab = mo.callout("Aucune donnee pour cet exercice.", kind="info")
+    crd_n = _build(annee, annee)
+    crd_p = _build(annee_prev, annee_prev)
+    return (crd_n, crd_p)
+
+
+@app.cell(hide_code=True)
+def _(crd_n, crd_p):
+    def _evol(n, p):
+        if p is None or p == 0:
+            return None
+        return (n - p) / abs(p)
+
+    # Structure du CRD : ordre, libelle, reel_n, reel_p, type (total/revenu/charge), pct du CA
+    _ca_n = crd_n["ca"] or 1
+    _rows = [
+        (1.0, "Chiffre d'affaires",           crd_n["ca"],   crd_p["ca"],   "total"),
+        (2.0, "− Charges variables",          -crd_n["cv"],  -crd_p["cv"],  "charge"),
+        (2.5, "= Marge sur coût variable",    crd_n["mcv"],  crd_p["mcv"],  "solde"),
+        (3.0, "− Charges fixes",              -crd_n["cf"],  -crd_p["cf"],  "charge"),
+        (3.5, "= Résultat d'exploitation",    crd_n["re"],   crd_p["re"],   "solde"),
+        (4.0, "± Résultat financier",         crd_n["rf"],   crd_p["rf"],   "neutre"),
+        (4.5, "= Résultat courant avant IS",  crd_n["rcai"], crd_p["rcai"], "solde"),
+        (5.0, "± Résultat exceptionnel",      crd_n["rex"],  crd_p["rex"],  "neutre"),
+        (6.0, "− Impôt sur les sociétés",     -crd_n["is_"], -crd_p["is_"], "charge"),
+        (7.0, "= Résultat net",               crd_n["rn"],   crd_p["rn"],   "solde_final"),
+        (8.0, "+ CAF",                        crd_n["caf"],  crd_p["caf"],  "total"),
+    ]
+
+    _tbl = pd.DataFrame([
+        {
+            "Ordre":    o,
+            "Libellé":  lib,
+            "Réel":     reel,
+            "% CA":     (reel / _ca_n) if _ca_n else None,
+            "N-1":      n1,
+            "Évol %":   _evol(reel, n1),
+            "_type":    typ,
+        }
+        for (o, lib, reel, n1, typ) in _rows
+    ])
+
+    def _fmt_val(v):
+        if v is None or pd.isna(v):
+            return ""
+        return fmt(v)
+
+    def _fmt_pct(v):
+        if v is None or pd.isna(v):
+            return ""
+        return f"{v:+.1%}"
+
+    _types_by_idx = _tbl["_type"].to_dict()
+    _tbl_display = _tbl.drop(columns=["_type"])
+    _ncols = len(_tbl_display.columns)
+
+    def _style_row(row):
+        t = _types_by_idx.get(row.name, "")
+        if t == "solde_final":
+            return ["background-color: #1e40af; color: white; font-weight: 700"] * _ncols
+        if t == "solde":
+            return ["background-color: #dbeafe; color: #1e3a8a; font-weight: 600"] * _ncols
+        if t == "charge":
+            return ["color: #b91c1c"] * _ncols
+        return [""] * _ncols
+
+    _styler = (
+        _tbl_display
+        .style
+        .format({
+            "Réel":   _fmt_val,
+            "N-1":    _fmt_val,
+            "% CA":   _fmt_pct,
+            "Évol %": _fmt_pct,
+            "Ordre":  lambda v: f"{v:.1f}",
+        })
+        .apply(_style_row, axis=1)
+        .hide(axis="index")
+    )
+    crd_tbl_html = mo.Html(_styler.to_html())
+    return (crd_tbl_html,)
+
+
+@app.cell(hide_code=True)
+def _(crd_n):
+    # Waterfall CA → MCV → RE → RCAI → RN (Altair)
+    _steps = [
+        ("CA",          0,                                   crd_n["ca"],   "total"),
+        ("− Ch. var.",  crd_n["mcv"],                        crd_n["ca"],   "neg"),
+        ("MCV",         0,                                   crd_n["mcv"],  "total"),
+        ("− Ch. fixes", crd_n["re"],                         crd_n["mcv"],  "neg"),
+        ("Rés. expl.",  0,                                   crd_n["re"],   "total"),
+        ("± Fin.",      min(crd_n["re"], crd_n["rcai"]),     max(crd_n["re"], crd_n["rcai"]), "pos" if crd_n["rf"] >= 0 else "neg"),
+        ("RCAI",        0,                                   crd_n["rcai"], "total"),
+        ("± Except.",   min(crd_n["rcai"], crd_n["rcai"] + crd_n["rex"]),   max(crd_n["rcai"], crd_n["rcai"] + crd_n["rex"]), "pos" if crd_n["rex"] >= 0 else "neg"),
+        ("− IS",        crd_n["rn"],                         crd_n["rcai"] + crd_n["rex"], "neg"),
+        ("Rés. net",    0,                                   crd_n["rn"],   "total"),
+    ]
+    _df_wf = pd.DataFrame([
+        {"step": i, "label": lab, "start": float(start), "end": float(end), "type": typ}
+        for i, (lab, start, end, typ) in enumerate(_steps)
+    ])
+
+    if crd_n["ca"] == 0:
+        crd_waterfall = mo.md("_Pas de donnees pour le waterfall._")
     else:
-        _resume = _df_bg.groupby("classe", as_index=False).agg(
-            solde=("solde", "sum"),
-            nb_comptes=("compte_numero", "nunique"),
-        )
-        _resume["classe_label"] = "Classe " + _resume["classe"].astype(str)
-        _resume["solde"] = _resume["solde"].astype(float)
-
-        _chart_classes = (
-            alt.Chart(_resume)
-            .mark_bar()
+        _chart = (
+            alt.Chart(_df_wf)
+            .mark_bar(size=40)
             .encode(
-                x=alt.X("classe_label:N", title="", sort=None),
-                y=alt.Y("solde:Q", title="Solde (€)", axis=alt.Axis(format=",.0f")),
+                x=alt.X("label:N", sort=None, title="", axis=alt.Axis(labelAngle=-20)),
+                y=alt.Y("start:Q", title="Montant (€)", axis=alt.Axis(format=",.0f")),
+                y2="end:Q",
                 color=alt.Color(
-                    "classe_label:N",
-                    scale=alt.Scale(scheme="category10"),
+                    "type:N",
+                    scale=alt.Scale(
+                        domain=["total", "neg", "pos"],
+                        range=["#1e40af", "#dc2626", "#16a34a"],
+                    ),
                     legend=None,
                 ),
                 tooltip=[
-                    alt.Tooltip("classe_label:N", title="Classe"),
-                    alt.Tooltip("solde:Q", title="Solde", format=",.0f"),
-                    alt.Tooltip("nb_comptes:Q", title="Nb comptes"),
+                    alt.Tooltip("label:N", title="Étape"),
+                    alt.Tooltip("start:Q", title="Début", format=",.0f"),
+                    alt.Tooltip("end:Q", title="Fin", format=",.0f"),
                 ],
             )
-            .properties(
-                title="Solde par classe comptable",
-                height=300,
-                width="container",
-            )
+            .properties(title="Formation du résultat net", height=360, width="container")
         )
+        crd_waterfall = _chart
+    return (crd_waterfall,)
 
-        # Resume par classe (agrege)
-        _bg_agg = _df_bg.groupby(
-            ["compte_numero", "compte_libelle", "classe"], as_index=False
-        )["solde"].sum().sort_values("compte_numero")
-        _bg_agg["solde"] = _bg_agg["solde"].astype(float)
-
-        _table = mo.ui.table(
-            _bg_agg,
-            selection=None,
-            pagination=True,
-            page_size=20,
-            format_mapping={"solde": lambda v: fmt(v)},
-            label=f"{len(_bg_agg)} comptes",
-        )
-
-        _csv = _bg_agg.to_csv(index=False).encode("utf-8")
-        _download = mo.download(
-            data=_csv,
-            filename=f"balance_{annee}.csv",
-            mimetype="text/csv",
-            label="Telecharger CSV",
-        )
-
-        bg_tab = mo.vstack(
-            [
-                mo.md(
-                    f"### Balance generale — {_df_bg['compte_numero'].nunique()} comptes, "
-                    f"{len(_df_bg)} lignes"
-                ),
-                mo.ui.altair_chart(_chart_classes),
-                mo.md("### Detail par compte"),
-                _download,
-                _table,
-            ],
-            gap=1,
-        )
-    return (bg_tab,)
-
-
-# ── PAGE 3 : GRAND LIVRE (filtre compte — creation) ─────────────
 
 @app.cell(hide_code=True)
 def _():
-    gl_filtre_compte = mo.ui.text(
-        value="",
-        label="Filtre compte (ex: 411, 60)",
-        placeholder="Numero de compte...",
+    crd_drill_cat = mo.ui.dropdown(
+        options=[
+            "(aucun)",
+            "Chiffre d'affaires",
+            "Charges variables",
+            "Charges fixes exploitation",
+            "Resultat financier",
+            "Resultat exceptionnel",
+            "Impot sur les societes",
+        ],
+        value="(aucun)",
+        label="Drilldown catégorie",
         full_width=True,
     )
-    return (gl_filtre_compte,)
+    return (crd_drill_cat,)
 
-
-# ── PAGE 3 : GRAND LIVRE (contenu) ──────────────────────────────
 
 @app.cell(hide_code=True)
-def _(annee, entite_id, gl_filtre_compte, mois_num):
-    _compte = gl_filtre_compte.value.strip()
-    _clauses = ["annee = %s"]
-    _params_list = [annee]
-    if entite_id:
-        _clauses.insert(0, "entite_id = %s::uuid")
-        _params_list.insert(0, entite_id)
-    if _compte:
-        _clauses.append("compte_numero LIKE %s")
-        _params_list.append(f"{_compte}%")
-    if mois_num:
-        _clauses.append("mois = %s")
-        _params_list.append(mois_num)
-
-    _df_gl = db_query(f"""
-        SELECT ecriture_date, journal_code, ecriture_num,
-            compte_numero, compte_libelle, piece_ref, ecriture_lib,
-            debit, credit, (debit - credit) AS solde
-        FROM grand_livre
-        WHERE {' AND '.join(_clauses)}
-        ORDER BY ecriture_date DESC, ecriture_num
-        LIMIT 500
-    """, tuple(_params_list))
-
-    if _df_gl.empty:
-        _content = mo.callout("Aucune ecriture pour ce filtre.", kind="info")
+def _(annee, crd_drill_cat, entite_id, trim_num):
+    if crd_drill_cat.value == "(aucun)":
+        crd_drill = mo.md("_Sélectionnez une catégorie ci-dessus pour voir les comptes PCG détaillés._")
     else:
-        _df_gl["debit"] = _df_gl["debit"].astype(float)
-        _df_gl["credit"] = _df_gl["credit"].astype(float)
-        _df_gl["solde"] = _df_gl["solde"].astype(float)
+        _clauses = ["annee = %s", "crd_categorie = %s"]
+        _params = [annee, crd_drill_cat.value]
+        if entite_id:
+            _clauses.insert(0, "entite_id = %s::uuid")
+            _params.insert(0, entite_id)
+        if trim_num:
+            _clauses.append("trimestre = %s")
+            _params.append(trim_num)
+        _df = db_query(f"""
+            SELECT compte_numero, compte_libelle, crd_rubrique,
+                   SUM(montant) AS montant
+            FROM v_crd_drilldown
+            WHERE {' AND '.join(_clauses)}
+            GROUP BY compte_numero, compte_libelle, crd_rubrique
+            ORDER BY ABS(SUM(montant)) DESC
+        """, tuple(_params))
+        if _df.empty:
+            crd_drill = mo.callout("Aucun compte trouvé pour cette catégorie.", kind="info")
+        else:
+            _df["montant"] = _df["montant"].astype(float)
+            crd_drill = mo.ui.table(
+                _df, selection=None, pagination=True, page_size=15,
+                format_mapping={"montant": lambda v: fmt(v)},
+                label=f"{len(_df)} comptes · {crd_drill_cat.value}",
+            )
+    return (crd_drill,)
 
-        _table = mo.ui.table(
-            _df_gl,
-            selection=None,
-            pagination=True,
-            page_size=25,
-            format_mapping={
-                "debit": lambda v: fmt(v) if v else "",
-                "credit": lambda v: fmt(v) if v else "",
-                "solde": lambda v: fmt(v),
-            },
-            label=f"{len(_df_gl)} ecritures (limite 500)",
-        )
-
-        _csv = _df_gl.to_csv(index=False).encode("utf-8")
-        _download = mo.download(
-            data=_csv,
-            filename=f"grand_livre_{annee}.csv",
-            mimetype="text/csv",
-            label="Telecharger CSV",
-        )
-
-        _content = mo.vstack([_download, _table], gap=0.5)
-
-    gl_tab = mo.vstack([gl_filtre_compte, _content], gap=1)
-    return (gl_tab,)
-
-
-# ── PAGE 4 : CRD DETAILLE ───────────────────────────────────────
 
 @app.cell(hide_code=True)
-def _(annee, entite_id, mois_num, trim_num):
-    _clauses = ["annee = %s"]
-    _params_list = [annee]
-    if entite_id:
-        _clauses.insert(0, "entite_id = %s::uuid")
-        _params_list.insert(0, entite_id)
-    if trim_num:
-        _clauses.append("trimestre = %s")
-        _params_list.append(trim_num)
-    if mois_num:
-        _clauses.append("mois = %s")
-        _params_list.append(mois_num)
-
-    _df_drill = db_query(f"""
-        SELECT crd_categorie, crd_rubrique, compte_numero, compte_libelle,
-            SUM(montant) AS montant
-        FROM v_crd_drilldown
-        WHERE {' AND '.join(_clauses)}
-        GROUP BY crd_categorie, crd_rubrique, compte_numero, compte_libelle
-        ORDER BY crd_categorie, ABS(SUM(montant)) DESC
-    """, tuple(_params_list))
-
-    if _df_drill.empty:
-        crd_tab = mo.callout("Aucune donnee CRD.", kind="info")
-    else:
-        _df_drill["montant"] = _df_drill["montant"].astype(float)
-
-        # Vue agrege par categorie
-        _cat_agg = _df_drill.groupby("crd_categorie", as_index=False)["montant"].sum()
-        _cat_agg = _cat_agg.sort_values("montant", key=abs, ascending=False)
-
-        _chart_cats = (
-            alt.Chart(_cat_agg)
-            .mark_bar()
-            .encode(
-                y=alt.Y("crd_categorie:N", sort="-x", title="Categorie"),
-                x=alt.X("montant:Q", title="Montant (€)", axis=alt.Axis(format=",.0f")),
-                color=alt.condition(
-                    alt.datum.montant > 0,
-                    alt.value("#38a169"),
-                    alt.value("#e53e3e"),
-                ),
-                tooltip=[
-                    alt.Tooltip("crd_categorie:N", title="Categorie"),
-                    alt.Tooltip("montant:Q", title="Montant", format=",.0f"),
-                ],
-            )
-            .properties(
-                title="Montants par categorie CRD",
-                height=320,
-                width="container",
-            )
-        )
-
-        _table = mo.ui.table(
-            _df_drill,
-            selection=None,
-            pagination=True,
-            page_size=20,
-            format_mapping={"montant": lambda v: fmt(v)},
-            label=f"{len(_df_drill)} lignes",
-        )
-
-        crd_tab = mo.vstack(
-            [
-                mo.md("### Montants par categorie"),
-                mo.ui.altair_chart(_chart_cats),
-                mo.md("### Detail par compte"),
-                _table,
-            ],
-            gap=1,
-        )
+def _(crd_drill, crd_drill_cat, crd_tbl_html, crd_waterfall, date_ref_str):
+    crd_tab = mo.vstack(
+        [
+            mo.md(f"### Compte de Résultat Différentiel — Réel" + (f" · au {date_ref_str}" if date_ref_str else "")),
+            crd_tbl_html,
+            mo.md("### Formation du résultat"),
+            crd_waterfall,
+            mo.md("### Drilldown par catégorie"),
+            crd_drill_cat,
+            crd_drill,
+        ],
+        gap=1,
+    )
     return (crd_tab,)
 
 
@@ -825,7 +815,7 @@ def _(annee, entite_id):
                 mo.md("### Indicateurs de structure financiere"),
                 _kpi,
                 _verif,
-                mo.ui.altair_chart(_chart_bf),
+                _chart_bf,
                 mo.md("### Detail par compte"),
                 _drill,
             ],
@@ -888,14 +878,12 @@ def _(sql_input):
 # ── TABS (assemblage final) ─────────────────────────────────────
 
 @app.cell(hide_code=True)
-def _(bf_tab, bg_tab, crd_tab, gl_tab, overview_tab, sql_tab):
+def _(bf_tab, crd_tab, overview_tab, sql_tab):
     mo.ui.tabs(
         {
             "Vue d'ensemble": overview_tab,
-            "Balance Generale": bg_tab,
-            "CRD detaille": crd_tab,
+            "CRD Réel": crd_tab,
             "Bilan Fonctionnel": bf_tab,
-            "Grand Livre": gl_tab,
             "SQL libre": sql_tab,
         },
     )
