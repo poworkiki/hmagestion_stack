@@ -262,23 +262,31 @@ aside > div:last-child {
     margin-bottom: 1rem;
 }
 
-/* ── Tabs ── */
+/* ── Tabs — Top bar sticky ── */
 [role="tablist"] {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 100 !important;
+    background: var(--hma-card) !important;
     border-bottom: 1px solid var(--hma-border) !important;
     gap: 0 !important;
-    margin-bottom: 1.5rem !important;
+    margin: -1.25rem -2rem 1.5rem -2rem !important;
+    padding: 0.5rem 2rem 0 2rem !important;
+    box-shadow: 0 1px 4px rgba(16, 24, 40, 0.04);
+    backdrop-filter: blur(8px);
 }
 
 button[role="tab"] {
     font-weight: 500 !important;
-    font-size: 0.88rem !important;
+    font-size: 0.9rem !important;
     color: var(--hma-text-muted) !important;
-    padding: 0.75rem 1.25rem !important;
+    padding: 0.85rem 1.5rem !important;
     border: none !important;
     border-bottom: 2px solid transparent !important;
     background: transparent !important;
     transition: all 0.15s ease;
     letter-spacing: -0.01em;
+    white-space: nowrap;
 }
 
 button[role="tab"]:hover {

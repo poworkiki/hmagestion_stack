@@ -90,20 +90,6 @@ def kpi_stat(label, current, previous=None, higher_is_better=True):
     )
 
 
-# ── TITRE ───────────────────────────────────────────────────────
-
-@app.cell(hide_code=True)
-def _():
-    mo.md(
-        r"""
-        # HMAnalytics
-
-        Notebook reactif connecte a PostgreSQL HMA. Utilisez la sidebar pour
-        selectionner une structure et un exercice. Les donnees se mettent a jour
-        automatiquement sur tous les onglets.
-        """
-    )
-    return
 
 
 # ── CHARGEMENT DES OPTIONS (cellule separee, pas d'UI) ──────────
